@@ -3,6 +3,15 @@
 **Professional Windows Desktop Software (Windows 10 & 11)**  
 *Biometric Passport Photo Editor + AI Document Scanner + Print Sheet Maker*
 
+[![Download for Windows](https://img.shields.io/badge/Download-Windows%20Installer%20(.exe)-blue?style=for-the-badge&logo=windows)](https://github.com/kkrkishan/passport-photo-studio-pro/releases/download/v1.0.0/PassportPhotoStudioPro-Setup.exe)
+[![Version](https://img.shields.io/badge/version-1.0.0-emerald?style=for-the-badge)](https://github.com/kkrkishan/passport-photo-studio-pro/releases)
+[![Platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-cyan?style=for-the-badge)](https://github.com/kkrkishan/passport-photo-studio-pro)
+
+---
+
+### 📥 [👉 Click Here to Download Windows Installer (Setup.exe)](https://github.com/kkrkishan/passport-photo-studio-pro/releases/download/v1.0.0/PassportPhotoStudioPro-Setup.exe)
+*Ready-to-install standalone software for Windows 10 & 11 (64-bit).*
+
 ---
 
 ## 🌟 Overview
