@@ -14,6 +14,34 @@
 
 ---
 
+## 📸 Screenshots & Application Preview
+
+<p align="center">
+  <img src="screenshots/screenshot-1.png" alt="Main Dashboard & Studio Modules" width="85%" />
+</p>
+
+<p align="center">
+  <img src="screenshots/screenshot-2.png" alt="Passport Photo Studio & Biometric Alignment" width="85%" />
+</p>
+
+<p align="center">
+  <img src="screenshots/screenshot-3.png" alt="Biometric Face Guides & Studio Background Replacement" width="85%" />
+</p>
+
+<p align="center">
+  <img src="screenshots/screenshot-4.png" alt="Dynamic 4x6 and A4 Print Sheet Engine" width="85%" />
+</p>
+
+<p align="center">
+  <img src="screenshots/screenshot-5.png" alt="Document Scanner Studio Dual Slot Cards" width="85%" />
+</p>
+
+<p align="center">
+  <img src="screenshots/screenshot-6.png" alt="4-Corner Homography Perspective Correction & A4 Print Layout" width="85%" />
+</p>
+
+---
+
 ## 🌟 Overview
 
 **Passport Photo Studio Pro** is a modern, native-grade Windows desktop application built with Electron, React, TypeScript, and Tailwind CSS. Designed specifically for photo studios, cyber cafes, digital service centers, and home users, it combines two specialized studios into a single offline-capable desktop powerhouse:
