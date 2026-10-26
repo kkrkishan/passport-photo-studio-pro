@@ -1,4 +1,4 @@
-export type ActiveModule = 'dashboard' | 'passport' | 'scanner';
+export type ActiveModule = 'dashboard' | 'passport' | 'scanner' | 'resizer';
 
 export interface PhotoPreset {
   id: string;
@@ -200,7 +200,7 @@ export interface PPSPProjectFile {
   version: '1.0';
   software: 'Passport Photo Studio Pro';
   createdAt: string;
-  module: 'passport' | 'scanner';
+  module: 'passport' | 'scanner' | 'resizer';
   passportData?: {
     rawImage: string | null;
     cropPreset: PhotoPreset;
@@ -215,3 +215,78 @@ export interface PPSPProjectFile {
     layoutSettings: A4LayoutSettings;
   };
 }
+
+// ==========================================
+// MODULE 3: PHOTO & DOCUMENT RESIZER PRO TYPES
+// ==========================================
+
+export type ResizerTab =
+  | 'photo-resizer'
+  | 'photo-compressor'
+  | 'exam-presets'
+  | 'custom-presets'
+  | 'pdf-resizer'
+  | 'images-to-pdf'
+  | 'batch';
+
+export type ResizeUnit = 'px' | 'mm' | 'cm' | 'inch' | 'percent';
+
+export type ImageFormat = 'jpg' | 'jpeg' | 'png' | 'webp' | 'bmp';
+
+export type DpiMode = 'metadata' | 'resample';
+
+export type ResizeFitMode = 'exact' | 'fit-within' | 'stretch';
+
+export type ExamPresetCategory =
+  | 'banking'
+  | 'railway'
+  | 'ssc'
+  | 'upsc'
+  | 'nta'
+  | 'rajasthan'
+  | 'education'
+  | 'other';
+
+export interface ExamPreset {
+  id: string;
+  name: string;
+  category: ExamPresetCategory;
+  subCategory?: string;
+  documentType: 'photo' | 'signature' | 'thumb' | 'certificate';
+  width: number;
+  height: number;
+  unit: ResizeUnit;
+  minKB?: number;
+  maxKB?: number;
+  preferredKB?: number;
+  dpi?: number;
+  allowedFormats: ImageFormat[];
+  notes: string;
+  officialSource?: string;
+  lastVerifiedDate: string;
+  isVerified: boolean;
+  isCustom?: boolean;
+}
+
+export type PdfCompressionMode = 'lossless' | 'balanced' | 'strong' | 'custom';
+
+export type PageSizePreset = 'a4' | 'a5' | 'letter' | 'legal' | 'original' | 'custom';
+
+export interface BatchItem {
+  id: string;
+  file: File;
+  name: string;
+  type: string; // mime
+  originalSizeKB: number;
+  outputSizeKB?: number;
+  originalWidth: number;
+  originalHeight: number;
+  outputWidth?: number;
+  outputHeight?: number;
+  format: ImageFormat;
+  status: 'pending' | 'processing' | 'completed' | 'warning' | 'failed';
+  error?: string;
+  outputDataUrl?: string;
+  outputBlob?: Blob;
+}
+

@@ -3,6 +3,7 @@ import { TitleBar } from './components/common/TitleBar';
 import { Dashboard } from './components/dashboard/Dashboard';
 import { PassportStudio } from './components/passport/PassportStudio';
 import { DocumentScanner } from './components/scanner/DocumentScanner';
+import { ResizerStudio } from './components/resizer/ResizerStudio';
 import { AboutModal } from './components/common/AboutModal';
 import { ActiveModule } from './types';
 import { createProjectJSON, parseProjectJSON } from './services/projectService';
@@ -68,7 +69,7 @@ export const App: React.FC = () => {
 
   const handleSaveProject = async () => {
     const projectContent = createProjectJSON({
-      module: activeModule === 'scanner' ? 'scanner' : 'passport',
+      module: activeModule === 'scanner' ? 'scanner' : activeModule === 'resizer' ? 'resizer' : 'passport',
     });
 
     if (electronAPI) {
@@ -123,6 +124,10 @@ export const App: React.FC = () => {
 
         {activeModule === 'scanner' && (
           <DocumentScanner />
+        )}
+
+        {activeModule === 'resizer' && (
+          <ResizerStudio onNotify={showToast} />
         )}
 
         {/* Global Toast */}

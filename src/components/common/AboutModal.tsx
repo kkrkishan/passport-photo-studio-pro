@@ -43,23 +43,32 @@ export const AboutModal: React.FC<AboutModalProps> = ({ isOpen, onClose }) => {
             </p>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="p-3 bg-slate-800/40 rounded-xl border border-slate-700/50">
-              <div className="font-medium text-white flex items-center space-x-1.5 mb-1">
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Biometric Alignment</span>
+          <div className="grid grid-cols-3 gap-2.5">
+            <div className="p-2.5 bg-slate-800/40 rounded-xl border border-slate-700/50">
+              <div className="font-medium text-white flex items-center space-x-1.5 mb-1 text-xs">
+                <CheckCircle2 className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                <span>Passport Studio</span>
               </div>
-              <p className="text-[11px] text-slate-400">
-                Calibrated to ISO/IEC 19794-5 and ICAO Doc 9303 standards with 70–80% face coverage guidelines.
+              <p className="text-[10px] text-slate-400">
+                Biometric alignment, 35×45mm, 2×2", background studio & 4×6"/A4 sheets.
               </p>
             </div>
-            <div className="p-3 bg-slate-800/40 rounded-xl border border-slate-700/50">
-              <div className="font-medium text-white flex items-center space-x-1.5 mb-1">
-                <HardDrive className="w-3.5 h-3.5 text-indigo-400" />
-                <span>Print-Ready 300 DPI</span>
+            <div className="p-2.5 bg-slate-800/40 rounded-xl border border-slate-700/50">
+              <div className="font-medium text-white flex items-center space-x-1.5 mb-1 text-xs">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                <span>Scanner Studio</span>
               </div>
-              <p className="text-[11px] text-slate-400">
-                True physical mm scaling for 4×6", A4, 5×7" with precision scissor cutting crosshairs.
+              <p className="text-[10px] text-slate-400">
+                4-corner homography warp, document filters, A4 Front+Back layout.
+              </p>
+            </div>
+            <div className="p-2.5 bg-slate-800/40 rounded-xl border border-slate-700/50">
+              <div className="font-medium text-white flex items-center space-x-1.5 mb-1 text-xs">
+                <CheckCircle2 className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                <span>Resizer Pro</span>
+              </div>
+              <p className="text-[10px] text-slate-400">
+                Target KB compression, exam presets (IBPS, SSC, UPSC), DPI & PDF resize.
               </p>
             </div>
           </div>

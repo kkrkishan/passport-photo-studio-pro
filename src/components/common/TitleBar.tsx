@@ -11,7 +11,8 @@ import {
   Sparkles,
   FileText,
   Layers,
-  Info
+  Info,
+  Maximize2
 } from 'lucide-react';
 import { ActiveModule } from '../../types';
 
@@ -170,6 +171,16 @@ export const TitleBar: React.FC<TitleBarProps> = ({
                     <div className="text-[10px] text-slate-400">Straighten, Enhance & A4 Front+Back</div>
                   </div>
                 </button>
+                <button
+                  onClick={() => { onSelectModule('resizer'); setActiveMenu(null); }}
+                  className={`w-full text-left px-3 py-2 hover:bg-blue-600 flex items-center space-x-2.5 transition ${activeModule === 'resizer' ? 'bg-blue-900/40 text-blue-300 font-semibold' : ''}`}
+                >
+                  <Maximize2 className="w-4 h-4 text-amber-400" />
+                  <div>
+                    <div className="text-xs">Photo & Document Resizer Pro</div>
+                    <div className="text-[10px] text-slate-400">Target KB, Exam Presets, DPI & PDF Compress</div>
+                  </div>
+                </button>
               </div>
             )}
           </div>
@@ -206,6 +217,17 @@ export const TitleBar: React.FC<TitleBarProps> = ({
       {/* Center: Module quick switcher pill */}
       <div className="flex items-center space-x-1 bg-slate-950/70 p-0.5 rounded-lg border border-slate-800" style={{ WebkitAppRegion: 'no-drag' } as any}>
         <button
+          onClick={() => onSelectModule('dashboard')}
+          className={`flex items-center space-x-1 px-2.5 py-1 rounded-md text-xs font-medium transition ${
+            activeModule === 'dashboard'
+              ? 'bg-slate-800 text-white shadow-sm'
+              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+          }`}
+          title="Return to Home Dashboard"
+        >
+          <span>Home</span>
+        </button>
+        <button
           onClick={() => onSelectModule('passport')}
           className={`flex items-center space-x-1.5 px-3 py-1 rounded-md text-xs font-medium transition ${
             activeModule === 'passport'
@@ -226,6 +248,17 @@ export const TitleBar: React.FC<TitleBarProps> = ({
         >
           <FileText className="w-3.5 h-3.5" />
           <span>Document Scanner</span>
+        </button>
+        <button
+          onClick={() => onSelectModule('resizer')}
+          className={`flex items-center space-x-1.5 px-3 py-1 rounded-md text-xs font-medium transition ${
+            activeModule === 'resizer'
+              ? 'bg-amber-600 text-white shadow-sm'
+              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+          }`}
+        >
+          <Maximize2 className="w-3.5 h-3.5" />
+          <span>Resizer Pro</span>
         </button>
       </div>
 
