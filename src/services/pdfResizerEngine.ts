@@ -20,6 +20,8 @@ export interface PdfProcessOptions {
   orientation?: 'portrait' | 'landscape' | 'original';
   compressionMode?: PdfCompressionMode;
   targetKb?: number;
+  qualitySlider?: number; // 0 to 100
+  dpi?: number;
 }
 
 export interface PdfProcessResult {
@@ -29,6 +31,7 @@ export interface PdfProcessResult {
   pageCount: number;
   warning?: string;
   isWithinTarget?: boolean;
+  isValidated: boolean;
 }
 
 export interface ImageToPdfItem {
@@ -158,13 +161,23 @@ export async function processPdfDocument({
     finalDoc = originalDoc;
   }
 
-  // Optimize and save
+  // Optimize and save with object stream compression
   const finalBytes = await finalDoc.save({
     useObjectStreams: true,
   });
 
   const fileSizeBytes = finalBytes.byteLength;
-  const fileSizeKb = Math.round((fileSizeBytes / 1024) * 10) / 10;
+  const fileSizeKb = Math.round((fileSizeBytes / 1024) * 100) / 100;
+
+  // Feature 7: PDF Output Size Verification - re-open and validate generated PDF structure
+  let isValidated = false;
+  try {
+    const verifiedDoc = await PDFDocument.load(finalBytes, { ignoreEncryption: true });
+    isValidated = verifiedDoc.getPageCount() === pageCount;
+  } catch (err) {
+    console.warn('PDF validation warning:', err);
+    isValidated = false;
+  }
 
   let warning: string | undefined;
   let isWithinTarget = true;
@@ -172,8 +185,14 @@ export async function processPdfDocument({
   if (targetKb) {
     isWithinTarget = fileSizeKb <= targetKb;
     if (!isWithinTarget) {
-      warning = `Output PDF size is ${fileSizeKb} KB, which exceeds the target ${targetKb} KB limit.`;
+      warning = `Output PDF size is ${fileSizeKb} KB, which exceeds the target ${targetKb} KB limit. For stronger compression, select 'Strong Compression' mode or reduce target dimensions.`;
     }
+  }
+
+  if (compressionMode === 'lossless') {
+    warning = (warning ? warning + ' ' : '') + 'Lossless mode cleans structure without re-encoding embedded raster images.';
+  } else if (compressionMode === 'strong') {
+    warning = (warning ? warning + ' ' : '') + 'Note: Strong compression rasterizes PDF pages to optimize size; selectable text may be converted to images.';
   }
 
   return {
@@ -183,6 +202,7 @@ export async function processPdfDocument({
     pageCount,
     warning,
     isWithinTarget,
+    isValidated,
   };
 }
 

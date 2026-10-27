@@ -148,12 +148,12 @@ ipcMain.handle('dialog:saveExport', async (_event, {
 }: {
   dataBase64: string;
   defaultName: string;
-  format: 'pdf' | 'png' | 'jpg';
+  format: 'pdf' | 'png' | 'jpg' | 'webp';
 }) => {
   if (!mainWindow) return { success: false };
 
-  const extensions = format === 'pdf' ? ['pdf'] : format === 'png' ? ['png'] : ['jpg', 'jpeg'];
-  const filterName = format === 'pdf' ? 'PDF Document (*.pdf)' : format === 'png' ? 'PNG Image (*.png)' : 'JPEG Image (*.jpg)';
+  const extensions = format === 'pdf' ? ['pdf'] : format === 'png' ? ['png'] : format === 'webp' ? ['webp'] : ['jpg', 'jpeg'];
+  const filterName = format === 'pdf' ? 'PDF Document (*.pdf)' : format === 'png' ? 'PNG Image (*.png)' : format === 'webp' ? 'WEBP Image (*.webp)' : 'JPEG Image (*.jpg)';
 
   const downloadsPath = app.getPath('downloads');
   const defaultFilePath = path.join(downloadsPath, defaultName);
@@ -175,8 +175,18 @@ ipcMain.handle('dialog:saveExport', async (_event, {
   const base64Data = dataBase64.replace(/^data:[^;]+;base64,/, '');
   const buffer = Buffer.from(base64Data, 'base64');
   await fs.promises.writeFile(result.filePath, buffer);
+  const stat = await fs.promises.stat(result.filePath);
 
-  return { success: true, filePath: result.filePath };
+  return { success: true, filePath: result.filePath, verifiedBytes: stat.size };
+});
+
+ipcMain.handle('system:verifyFileSize', async (_event, filePath: string) => {
+  try {
+    const stat = await fs.promises.stat(filePath);
+    return { success: true, size: stat.size };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
 });
 
 ipcMain.handle('system:printPage', async () => {

@@ -8,7 +8,8 @@ export interface ElectronAPI {
   openImage: () => Promise<{ path: string; name: string; dataUrl: string } | null>;
   openProject: () => Promise<{ path: string; content: any } | null>;
   saveProject: (projectData: string, defaultName?: string) => Promise<{ success: boolean; canceled?: boolean; filePath?: string }>;
-  saveExport: (payload: { dataBase64: string; defaultName: string; format: 'pdf' | 'png' | 'jpg' }) => Promise<{ success: boolean; canceled?: boolean; filePath?: string }>;
+  saveExport: (payload: { dataBase64: string; defaultName: string; format: 'pdf' | 'png' | 'jpg' | 'webp' }) => Promise<{ success: boolean; canceled?: boolean; filePath?: string; verifiedBytes?: number }>;
+  verifyFileSize: (filePath: string) => Promise<{ success: boolean; size?: number; error?: string }>;
   printPage: () => Promise<boolean>;
   platform: string;
 }
@@ -22,6 +23,7 @@ const electronAPI: ElectronAPI = {
   openProject: () => ipcRenderer.invoke('dialog:openProject'),
   saveProject: (projectData, defaultName) => ipcRenderer.invoke('dialog:saveProject', projectData, defaultName),
   saveExport: (payload) => ipcRenderer.invoke('dialog:saveExport', payload),
+  verifyFileSize: (filePath) => ipcRenderer.invoke('system:verifyFileSize', filePath),
   printPage: () => ipcRenderer.invoke('system:printPage'),
   platform: process.platform,
 };

@@ -9,20 +9,23 @@ export async function saveOrDownloadFile({
 }: {
   dataUrl: string;
   defaultName: string;
-  format: 'jpg' | 'png' | 'pdf' | 'ppsp';
-}): Promise<{ success: boolean; filePath?: string; canceled?: boolean; error?: string }> {
+  format: 'jpg' | 'jpeg' | 'png' | 'webp' | 'pdf' | 'ppsp';
+}): Promise<{ success: boolean; filePath?: string; canceled?: boolean; verifiedBytes?: number; error?: string }> {
   try {
     // 1. If running in native Electron Desktop app, use native file system via secure IPC
     const electronAPI = (window as any).electronAPI;
+    const normalizedFormat: 'pdf' | 'png' | 'jpg' | 'webp' =
+      format === 'pdf' ? 'pdf' : format === 'png' ? 'png' : format === 'webp' ? 'webp' : 'jpg';
+
     if (electronAPI && typeof electronAPI.saveExport === 'function') {
       const res = await electronAPI.saveExport({
         dataBase64: dataUrl,
         defaultName,
-        format: format === 'ppsp' ? 'jpg' : format,
+        format: normalizedFormat,
       });
 
       if (res && res.success) {
-        return { success: true, filePath: res.filePath };
+        return { success: true, filePath: res.filePath, verifiedBytes: res.verifiedBytes };
       }
       if (res && res.canceled) {
         return { success: false, canceled: true };
@@ -54,7 +57,7 @@ export async function saveOrDownloadFile({
       URL.revokeObjectURL(blobUrl);
     }, 500);
 
-    return { success: true };
+    return { success: true, verifiedBytes: blob.size };
   } catch (err: any) {
     console.error('File save/download error:', err);
     return { success: false, error: err.message || 'Failed to save file' };
@@ -85,6 +88,8 @@ export function dataUrlToBlob(dataUrl: string, format?: string): Blob {
     mimeType = match[1];
   } else if (format === 'png') {
     mimeType = 'image/png';
+  } else if (format === 'webp') {
+    mimeType = 'image/webp';
   } else if (format === 'pdf') {
     mimeType = 'application/pdf';
   }

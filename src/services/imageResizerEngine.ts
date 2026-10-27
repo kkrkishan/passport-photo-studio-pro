@@ -188,12 +188,114 @@ export function getDataUrlByteSize(dataUrl: string): number {
 }
 
 /**
- * Format bytes to readable string (KB or MB)
+ * Crops source image at specified natural coordinates
+ */
+export function cropImageToCanvas(
+  sourceImage: HTMLImageElement | HTMLCanvasElement,
+  cropX: number,
+  cropY: number,
+  cropWidth: number,
+  cropHeight: number,
+  backgroundColor?: string
+): HTMLCanvasElement {
+  const canvas = document.createElement('canvas');
+  const w = Math.max(1, Math.round(cropWidth));
+  const h = Math.max(1, Math.round(cropHeight));
+  canvas.width = w;
+  canvas.height = h;
+
+  const ctx = canvas.getContext('2d')!;
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+
+  if (backgroundColor) {
+    ctx.fillStyle = backgroundColor;
+    ctx.fillRect(0, 0, w, h);
+  }
+
+  ctx.drawImage(
+    sourceImage,
+    Math.round(cropX),
+    Math.round(cropY),
+    w,
+    h,
+    0,
+    0,
+    w,
+    h
+  );
+  return canvas;
+}
+
+/**
+ * Resize image respecting aspect ratio mismatch modes:
+ * - 'crop-to-fit': fills target dimensions by trimming excess edges (no distortion)
+ * - 'fit-padding': fits entirely within target dimensions with letterbox/pillarbox background (no distortion)
+ * - 'stretch': forces exact dimensions with stretching
+ */
+export function resizeImageWithFitMode(
+  sourceImage: HTMLImageElement | HTMLCanvasElement,
+  targetWidth: number,
+  targetHeight: number,
+  fitMode: 'crop-to-fit' | 'fit-padding' | 'stretch' = 'crop-to-fit',
+  backgroundColor = '#ffffff'
+): HTMLCanvasElement {
+  const targetW = Math.max(1, Math.round(targetWidth));
+  const targetH = Math.max(1, Math.round(targetHeight));
+  const srcW = sourceImage.width;
+  const srcH = sourceImage.height;
+
+  if (fitMode === 'stretch') {
+    return resizeImageToCanvas(sourceImage, targetW, targetH, backgroundColor);
+  }
+
+  if (fitMode === 'fit-padding') {
+    const canvas = document.createElement('canvas');
+    canvas.width = targetW;
+    canvas.height = targetH;
+    const ctx = canvas.getContext('2d')!;
+
+    // Fill background
+    ctx.fillStyle = backgroundColor;
+    ctx.fillRect(0, 0, targetW, targetH);
+
+    const scale = Math.min(targetW / srcW, targetH / srcH);
+    const drawW = Math.round(srcW * scale);
+    const drawH = Math.round(srcH * scale);
+    const drawX = Math.round((targetW - drawW) / 2);
+    const drawY = Math.round((targetH - drawH) / 2);
+
+    const scaledCanvas = resizeImageToCanvas(sourceImage, drawW, drawH);
+    ctx.drawImage(scaledCanvas, drawX, drawY);
+    return canvas;
+  }
+
+  // 'crop-to-fit' (center crop to exact ratio, then resize)
+  const scale = Math.max(targetW / srcW, targetH / srcH);
+  const srcCropW = Math.min(srcW, targetW / scale);
+  const srcCropH = Math.min(srcH, targetH / scale);
+  const srcCropX = (srcW - srcCropW) / 2;
+  const srcCropY = (srcH - srcCropH) / 2;
+
+  const cropped = cropImageToCanvas(sourceImage, srcCropX, srcCropY, srcCropW, srcCropH);
+  return resizeImageToCanvas(cropped, targetW, targetH, backgroundColor);
+}
+
+/**
+ * Format bytes to readable string (KB or MB) using standard 1 KiB = 1024 bytes convention
  */
 export function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(2)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+/**
+ * Format bytes with both KB/MB and exact raw byte count
+ */
+export function formatDetailedBytes(bytes: number): string {
+  const formatted = formatFileSize(bytes);
+  return `${formatted} (${bytes.toLocaleString()} bytes)`;
 }
 
 /**

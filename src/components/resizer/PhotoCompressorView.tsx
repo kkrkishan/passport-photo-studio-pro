@@ -7,7 +7,10 @@ import {
   Zap,
   Sliders,
   CheckCircle2,
-  Minimize2
+  Minimize2,
+  Crop as CropIcon,
+  ShieldCheck,
+  Info
 } from 'lucide-react';
 import { ImageFormat } from '../../types';
 import {
@@ -16,9 +19,12 @@ import {
 } from '../../services/photoCompressorEngine';
 import {
   getDataUrlByteSize,
-  formatFileSize
+  formatFileSize,
+  formatDetailedBytes
 } from '../../services/imageResizerEngine';
 import { BeforeAfterPreview } from './BeforeAfterPreview';
+import { ManualCropModal } from './ManualCropModal';
+import { OutputInfoPanel, ProcessingStatus } from './OutputInfoPanel';
 import { saveOrDownloadFile } from '../../services/exportHelper';
 
 interface PhotoCompressorViewProps {
@@ -33,32 +39,53 @@ interface PhotoCompressorViewProps {
 }
 
 export const PhotoCompressorView: React.FC<PhotoCompressorViewProps> = ({ initialImage, onNotify }) => {
-  const [fileDataUrl, setFileDataUrl] = useState<string | null>(initialImage?.dataUrl || null);
-  const [fileName, setFileName] = useState<string>(initialImage?.name || 'photo.jpg');
-  const [origW, setOrigW] = useState<number>(initialImage?.width || 0);
-  const [origH, setOrigH] = useState<number>(initialImage?.height || 0);
-  const [origBytes, setOrigBytes] = useState<number>(initialImage?.sizeBytes || 0);
+  // Raw uncropped image
+  const [rawOriginalDataUrl, setRawOriginalDataUrl] = useState<string | null>(initialImage?.dataUrl || null);
+  const [rawW, setRawW] = useState<number>(initialImage?.width || 0);
+  const [rawH, setRawH] = useState<number>(initialImage?.height || 0);
+  const [rawBytes, setRawBytes] = useState<number>(initialImage?.sizeBytes || 0);
 
-  // Compression mode: 'target-kb' or 'manual-quality'
+  // Working image
+  const [workingDataUrl, setWorkingDataUrl] = useState<string | null>(initialImage?.dataUrl || null);
+  const [fileName, setFileName] = useState<string>(initialImage?.name || 'photo.jpg');
+  const [curW, setCurW] = useState<number>(initialImage?.width || 0);
+  const [curH, setCurH] = useState<number>(initialImage?.height || 0);
+  const [curBytes, setCurBytes] = useState<number>(initialImage?.sizeBytes || 0);
+  const [isCropped, setIsCropped] = useState<boolean>(false);
+
+  // Crop Modal State
+  const [isCropModalOpen, setIsCropModalOpen] = useState<boolean>(false);
+
+  // Mode Selection: 'target-kb' vs 'manual-quality'
   const [compressMode, setCompressMode] = useState<'target-kb' | 'manual-quality'>('target-kb');
+
+  // Feature 5: Real Target KB
   const [targetKb, setTargetKb] = useState<number>(50);
   const [customKb, setCustomKb] = useState<string>('50');
-  const [quality, setQuality] = useState<number>(0.85);
-  const [format, setFormat] = useState<ImageFormat>('jpg');
-  const [bgColor, setBgColor] = useState<string>('#ffffff');
   const [allowDownscale, setAllowDownscale] = useState<boolean>(true);
 
-  // Results
+  // Feature 2: 0–100% Quality Slider (Default 80%)
+  const [qualitySlider, setQualitySlider] = useState<number>(80);
+
+  // Format & Background
+  const [format, setFormat] = useState<ImageFormat>('jpg');
+  const [bgColor, setBgColor] = useState<string>('#ffffff');
+
+  // Results & Verification
   const [outputDataUrl, setOutputDataUrl] = useState<string>('');
   const [outputBytes, setOutputBytes] = useState<number>(0);
+  const [estimatedBytes, setEstimatedBytes] = useState<number | undefined>();
   const [outputW, setOutputW] = useState<number>(0);
   const [outputH, setOutputH] = useState<number>(0);
-  const [achievedQuality, setAchievedQuality] = useState<number>(0.85);
+  const [achievedQuality, setAchievedQuality] = useState<number>(0.80);
+  const [verifiedSavedBytes, setVerifiedSavedBytes] = useState<number | undefined>();
+  const [status, setStatus] = useState<ProcessingStatus>('ready');
+  const [statusMessage, setStatusMessage] = useState<string | undefined>();
   const [warning, setWarning] = useState<string | undefined>();
-  const [isProcessing, setIsProcessing] = useState<boolean>(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const imageElementRef = useRef<HTMLImageElement | null>(null);
+  const workingImageRef = useRef<HTMLImageElement | null>(null);
+  const renderJobIdRef = useRef<number>(0);
 
   useEffect(() => {
     if (initialImage) {
@@ -69,13 +96,22 @@ export const PhotoCompressorView: React.FC<PhotoCompressorViewProps> = ({ initia
   const loadImageData = (dataUrl: string, name: string) => {
     const img = new Image();
     img.onload = () => {
-      imageElementRef.current = img;
-      setFileDataUrl(dataUrl);
+      workingImageRef.current = img;
+      setRawOriginalDataUrl(dataUrl);
+      setRawW(img.width);
+      setRawH(img.height);
+
+      setWorkingDataUrl(dataUrl);
       setFileName(name);
-      setOrigW(img.width);
-      setOrigH(img.height);
+      setCurW(img.width);
+      setCurH(img.height);
+
       const bytes = getDataUrlByteSize(dataUrl);
-      setOrigBytes(bytes);
+      setRawBytes(bytes);
+      setCurBytes(bytes);
+      setIsCropped(false);
+      setVerifiedSavedBytes(undefined);
+      setStatus('ready');
     };
     img.src = dataUrl;
   };
@@ -110,70 +146,147 @@ export const PhotoCompressorView: React.FC<PhotoCompressorViewProps> = ({ initia
     }
   };
 
-  // Re-run compression when parameters change
-  useEffect(() => {
-    if (!fileDataUrl || !imageElementRef.current) return;
+  // Manual Crop Handlers
+  const handleApplyManualCrop = (croppedDataUrl: string, croppedW: number, croppedH: number) => {
+    const img = new Image();
+    img.onload = () => {
+      workingImageRef.current = img;
+      setWorkingDataUrl(croppedDataUrl);
+      setCurW(croppedW);
+      setCurH(croppedH);
+      const bytes = getDataUrlByteSize(croppedDataUrl);
+      setCurBytes(bytes);
+      setIsCropped(true);
+      setVerifiedSavedBytes(undefined);
+      onNotify?.(`Crop applied: ${croppedW} × ${croppedH} px`);
+    };
+    img.src = croppedDataUrl;
+  };
 
+  const handleRestoreOriginal = () => {
+    if (!rawOriginalDataUrl) return;
+    loadImageData(rawOriginalDataUrl, fileName);
+    onNotify?.('Restored original uncropped image.');
+  };
+
+  // Re-run compression when parameters change (Debounced & cancellable)
+  useEffect(() => {
+    if (!workingDataUrl || !workingImageRef.current) return;
+
+    setStatus('calculating');
+    if (compressMode === 'target-kb') {
+      setEstimatedBytes(targetKb * 1024);
+    } else {
+      setEstimatedBytes(Math.round(curBytes * (qualitySlider / 100) * 0.85));
+    }
+
+    const jobId = ++renderJobIdRef.current;
     const timer = setTimeout(() => {
-      runCompression();
-    }, 150);
+      if (jobId === renderJobIdRef.current) {
+        runCompression(jobId);
+      }
+    }, 120);
 
     return () => clearTimeout(timer);
-  }, [fileDataUrl, compressMode, targetKb, quality, format, bgColor, allowDownscale]);
+  }, [
+    workingDataUrl,
+    compressMode,
+    targetKb,
+    qualitySlider,
+    format,
+    bgColor,
+    allowDownscale
+  ]);
 
-  const runCompression = async () => {
-    if (!imageElementRef.current) return;
-    setIsProcessing(true);
+  const runCompression = async (jobId: number) => {
+    if (!workingImageRef.current || jobId !== renderJobIdRef.current) return;
+    setStatus('generating');
 
     try {
       if (compressMode === 'target-kb') {
         const res = await compressImageToTargetKb({
-          sourceImage: imageElementRef.current,
+          sourceImage: workingImageRef.current,
           targetKb,
           format,
           backgroundColor: bgColor,
           allowDimensionDownscale: allowDownscale,
         });
 
+        if (jobId !== renderJobIdRef.current) return;
+
         setOutputDataUrl(res.dataUrl);
         setOutputBytes(res.actualBytes);
         setOutputW(res.appliedWidth);
         setOutputH(res.appliedHeight);
         setAchievedQuality(res.quality);
-        setWarning(res.warning);
+        setEstimatedBytes(undefined);
+
+        if (!res.isWithinTarget) {
+          setStatus('target-unachievable');
+          setWarning(res.warning);
+          setStatusMessage(`Could not fit within ${targetKb} KB. Achieved: ${(res.actualBytes / 1024).toFixed(1)} KB`);
+        } else {
+          setStatus('preview-ready');
+          setWarning(res.warning);
+          setStatusMessage(`Target achieved: ${(res.actualBytes / 1024).toFixed(2)} KB (<= ${targetKb} KB)`);
+        }
       } else {
+        // Manual Quality Slider Mode
+        const normalizedQuality = Math.max(0.05, Math.min(1.0, qualitySlider / 100));
         const res = await compressImageWithFixedQuality({
-          sourceImage: imageElementRef.current,
-          quality,
+          sourceImage: workingImageRef.current,
+          quality: normalizedQuality,
           format,
           backgroundColor: bgColor,
         });
 
+        if (jobId !== renderJobIdRef.current) return;
+
         setOutputDataUrl(res.dataUrl);
         setOutputBytes(res.actualBytes);
-        setOutputW(origW);
-        setOutputH(origH);
-        setAchievedQuality(quality);
+        setOutputW(curW);
+        setOutputH(curH);
+        setAchievedQuality(normalizedQuality);
+        setEstimatedBytes(undefined);
+        setStatus('preview-ready');
         setWarning(undefined);
+        setStatusMessage(`Actual byte length: ${res.actualBytes.toLocaleString()} bytes`);
       }
     } catch (err: any) {
       console.error('Compression error:', err);
-    } finally {
-      setIsProcessing(false);
+      if (jobId === renderJobIdRef.current) {
+        setStatus('failed');
+        setStatusMessage(err.message || 'Compression failed');
+      }
     }
   };
 
+  // Feature 8: Exact Save & Verify
   const handleDownload = async () => {
     if (!outputDataUrl) return;
+    setStatus('saving');
+
     const baseName = fileName.replace(/\.[^/.]+$/, '');
     const outName = `${baseName}_compressed_${Math.round(outputBytes / 1024)}KB.${format === 'jpeg' ? 'jpg' : format}`;
+
     const res = await saveOrDownloadFile({
       dataUrl: outputDataUrl,
       defaultName: outName,
       format: format === 'jpeg' ? 'jpg' : format as any,
     });
+
     if (res.success) {
-      onNotify?.(`Saved successfully: ${outName}`);
+      const verified = res.verifiedBytes ?? outputBytes;
+      setVerifiedSavedBytes(verified);
+      setStatus('save-verified');
+      setStatusMessage(`Verified on disk: ${formatDetailedBytes(verified)}`);
+      onNotify?.(`Saved & Verified successfully: ${outName}`);
+    } else if (res.canceled) {
+      setStatus('preview-ready');
+    } else {
+      setStatus('failed');
+      setStatusMessage(res.error || 'Failed to save file');
+      onNotify?.('Save operation failed. No file written.');
     }
   };
 
@@ -186,25 +299,48 @@ export const PhotoCompressorView: React.FC<PhotoCompressorViewProps> = ({ initia
         <div>
           <h2 className="text-xl font-black text-white flex items-center space-x-2">
             <Minimize2 className="w-5 h-5 text-emerald-400" />
-            <span>Photo Compressor (Target KB & Quality Optimizer)</span>
+            <span>Photo Compressor (Target KB & 0–100% Quality Slider)</span>
           </h2>
           <p className="text-xs text-slate-400 mt-0.5">
-            Reduce photo file size to exact KB limits for government exams and online portals without ugly pixelation.
+            Strict target KB limits for government exams or manual 0–100% compression slider with verified disk export.
           </p>
         </div>
 
-        {fileDataUrl && (
+        {workingDataUrl && (
           <div className="flex items-center space-x-2">
+            {/* MANUAL CROP BUTTON (FEATURE 3) */}
+            <button
+              onClick={() => setIsCropModalOpen(true)}
+              className="px-3.5 py-1.5 rounded-xl bg-emerald-600/20 hover:bg-emerald-600 border border-emerald-500/40 text-emerald-300 hover:text-white text-xs font-bold flex items-center space-x-1.5 transition shadow-sm"
+              title="Open Manual Photo Crop Tool"
+            >
+              <CropIcon className="w-3.5 h-3.5" />
+              <span>MANUAL CROP</span>
+            </button>
+
+            {isCropped && (
+              <button
+                onClick={handleRestoreOriginal}
+                className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold flex items-center space-x-1 transition"
+                title="Revert to original uncropped photo"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>Restore Original</span>
+              </button>
+            )}
+
             <button
               onClick={() => fileInputRef.current?.click()}
               className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold flex items-center space-x-1.5 transition"
             >
-              <RefreshCw className="w-3.5 h-3.5" />
+              <Upload className="w-3.5 h-3.5" />
               <span>Change Image</span>
             </button>
+
             <button
               onClick={handleDownload}
-              className="px-4 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-lg shadow-emerald-900/30 flex items-center space-x-2 transition"
+              disabled={status === 'calculating' || status === 'generating' || status === 'saving'}
+              className="px-4 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-bold shadow-lg shadow-emerald-900/30 flex items-center space-x-2 transition"
             >
               <Download className="w-3.5 h-3.5" />
               <span>Save Compressed Photo</span>
@@ -221,7 +357,7 @@ export const PhotoCompressorView: React.FC<PhotoCompressorViewProps> = ({ initia
         className="hidden"
       />
 
-      {!fileDataUrl ? (
+      {!workingDataUrl ? (
         /* Upload Area */
         <div
           onDragOver={(e) => e.preventDefault()}
@@ -245,9 +381,11 @@ export const PhotoCompressorView: React.FC<PhotoCompressorViewProps> = ({ initia
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           {/* Controls Column (5 cols) */}
           <div className="lg:col-span-5 space-y-4">
-            {/* Mode Switcher */}
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3">
-              <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">Compression Method</span>
+            {/* Mode Switcher: Target KB vs Quality Slider */}
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3 shadow-lg">
+              <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">
+                Select Active Compression Mode
+              </span>
               <div className="grid grid-cols-2 gap-2 p-1 bg-slate-950 rounded-xl border border-slate-800">
                 <button
                   onClick={() => setCompressMode('target-kb')}
@@ -269,16 +407,28 @@ export const PhotoCompressorView: React.FC<PhotoCompressorViewProps> = ({ initia
                   }`}
                 >
                   <Sliders className="w-3.5 h-3.5" />
-                  <span>Manual Quality (%)</span>
+                  <span>0–100% Quality Slider</span>
                 </button>
+              </div>
+
+              {/* Informative mode explanation banner */}
+              <div className="p-2.5 rounded-xl bg-slate-950/70 border border-slate-800/80 text-[11px] text-slate-400 flex items-start space-x-2">
+                <Info className="w-3.5 h-3.5 text-blue-400 shrink-0 mt-0.5" />
+                <span>
+                  {compressMode === 'target-kb'
+                    ? `Target KB Mode is active: System binary-searches optimal quality to stay strictly under ${targetKb} KB.`
+                    : `Quality Slider Mode is active: System applies fixed ${qualitySlider}% quality without automatic downscaling.`}
+                </span>
               </div>
             </div>
 
-            {/* Target Size Controls */}
+            {/* FEATURE 5: TARGET FILE SIZE CONTROLS */}
             {compressMode === 'target-kb' ? (
-              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-4">
+              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-4 shadow-lg">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">Target Size</span>
+                  <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">
+                    Target File Size Limit
+                  </span>
                   <span className="text-xs font-mono font-bold text-emerald-400">{targetKb} KB</span>
                 </div>
 
@@ -340,31 +490,41 @@ export const PhotoCompressorView: React.FC<PhotoCompressorViewProps> = ({ initia
                 </div>
               </div>
             ) : (
-              /* Manual Quality Controls */
-              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-4">
+              /* FEATURE 2: 0–100% QUALITY SLIDER CONTROLS */
+              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-4 shadow-lg">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">Quality Slider</span>
-                  <span className="text-xs font-mono font-bold text-emerald-400">{Math.round(quality * 100)}%</span>
+                  <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">
+                    Quality / Compression Slider
+                  </span>
+                  <span className="text-xs font-mono font-bold text-emerald-400">{qualitySlider}%</span>
                 </div>
 
                 <input
                   type="range"
-                  min="0.1"
-                  max="1.0"
-                  step="0.05"
-                  value={quality}
-                  onChange={(e) => setQuality(parseFloat(e.target.value))}
-                  className="w-full accent-emerald-500"
+                  min="0"
+                  max="100"
+                  step="1"
+                  value={qualitySlider}
+                  onChange={(e) => setQualitySlider(parseInt(e.target.value, 10))}
+                  className="w-full accent-emerald-500 cursor-pointer"
                 />
 
+                <div className="flex justify-between items-center text-[10px] text-slate-400 font-mono">
+                  <span>0% (Max Compression)</span>
+                  <span className="text-white font-semibold">
+                    Quality: {qualitySlider}% | Compression: {100 - qualitySlider}%
+                  </span>
+                  <span>100% (Lossless / Max Quality)</span>
+                </div>
+
                 <div className="grid grid-cols-4 gap-1.5 pt-2 border-t border-slate-800/80">
-                  {[0.95, 0.85, 0.75, 0.60].map((q) => (
+                  {[100, 80, 50, 20].map((q) => (
                     <button
                       key={q}
-                      onClick={() => setQuality(q)}
+                      onClick={() => setQualitySlider(q)}
                       className="py-1 rounded bg-slate-800 hover:bg-slate-750 text-slate-300 text-xs font-medium"
                     >
-                      {Math.round(q * 100)}%
+                      {q}%
                     </button>
                   ))}
                 </div>
@@ -372,7 +532,7 @@ export const PhotoCompressorView: React.FC<PhotoCompressorViewProps> = ({ initia
             )}
 
             {/* Format & Background Color */}
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3">
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3 shadow-lg">
               <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">Format & Background</span>
 
               <div className="grid grid-cols-2 gap-3 items-center">
@@ -383,7 +543,7 @@ export const PhotoCompressorView: React.FC<PhotoCompressorViewProps> = ({ initia
                     onChange={(e) => setFormat(e.target.value as ImageFormat)}
                     className="w-full bg-slate-950 border border-slate-700/80 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
                   >
-                    <option value="jpg">JPG (Best Compatibility)</option>
+                    <option value="jpg">JPG (Standard Online Forms)</option>
                     <option value="webp">WEBP (Highest Compression)</option>
                     <option value="png">PNG (Lossless)</option>
                   </select>
@@ -407,11 +567,12 @@ export const PhotoCompressorView: React.FC<PhotoCompressorViewProps> = ({ initia
 
           {/* Preview & Results Column (7 cols) */}
           <div className="lg:col-span-7 space-y-4">
+            {/* Visual Preview */}
             <BeforeAfterPreview
-              originalUrl={fileDataUrl}
-              originalWidth={origW}
-              originalHeight={origH}
-              originalBytes={origBytes}
+              originalUrl={workingDataUrl}
+              originalWidth={curW}
+              originalHeight={curH}
+              originalBytes={curBytes}
               processedUrl={outputDataUrl}
               processedWidth={outputW}
               processedHeight={outputH}
@@ -420,20 +581,42 @@ export const PhotoCompressorView: React.FC<PhotoCompressorViewProps> = ({ initia
               isWithinTarget={compressMode === 'target-kb' ? outputBytes <= targetKb * 1024 : true}
             />
 
-            {/* Action Bar */}
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex items-center justify-between">
-              <div className="text-xs">
-                <span className="text-slate-400">Final File Size: </span>
-                <span className="font-bold text-emerald-400 text-sm">{formatFileSize(outputBytes)}</span>
-                <span className="mx-2 text-slate-600">|</span>
-                <span className="text-slate-400">Quality: </span>
-                <span className="font-bold text-white">{Math.round(achievedQuality * 100)}%</span>
+            {/* FEATURE 1 & 9: REAL-TIME OUTPUT SIZE & GEOMETRY PANEL */}
+            <OutputInfoPanel
+              originalFileName={fileName}
+              originalBytes={curBytes}
+              originalWidth={curW}
+              originalHeight={curH}
+              originalFormat={fileName.split('.').pop() || 'jpg'}
+              outputBytes={outputBytes}
+              estimatedBytes={estimatedBytes}
+              outputWidth={outputW}
+              outputHeight={outputH}
+              outputFormat={format}
+              dpi={300}
+              status={status}
+              statusMessage={statusMessage}
+              verifiedSavedBytes={verifiedSavedBytes}
+              warning={warning}
+            />
+
+            {/* Bottom Save Action */}
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex items-center justify-between shadow-xl">
+              <div className="text-xs text-slate-400">
+                {verifiedSavedBytes ? (
+                  <span className="text-emerald-400 font-bold flex items-center space-x-1">
+                    <ShieldCheck className="w-4 h-4" />
+                    <span>Saved to disk: {formatDetailedBytes(verifiedSavedBytes)}</span>
+                  </span>
+                ) : (
+                  <span>Ready to write exact compressed buffer to disk.</span>
+                )}
               </div>
 
               <button
                 onClick={handleDownload}
-                disabled={isProcessing}
-                className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-bold shadow-xl shadow-emerald-900/30 flex items-center space-x-2 transition"
+                disabled={status === 'calculating' || status === 'generating' || status === 'saving'}
+                className="px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-bold shadow-xl shadow-emerald-900/30 flex items-center space-x-2 transition"
               >
                 <Download className="w-4 h-4" />
                 <span>Download Compressed Photo</span>
@@ -441,6 +624,18 @@ export const PhotoCompressorView: React.FC<PhotoCompressorViewProps> = ({ initia
             </div>
           </div>
         </div>
+      )}
+
+      {/* Manual Crop Modal (Feature 3) */}
+      {workingDataUrl && (
+        <ManualCropModal
+          isOpen={isCropModalOpen}
+          imageDataUrl={workingDataUrl}
+          originalFileName={fileName}
+          onApplyCrop={handleApplyManualCrop}
+          onRestoreOriginal={handleRestoreOriginal}
+          onClose={() => setIsCropModalOpen(false)}
+        />
       )}
     </div>
   );
