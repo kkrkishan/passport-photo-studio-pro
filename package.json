@@ -10,7 +10,8 @@
     "build": "tsc && vite build && tsc -p tsconfig.electron.json",
     "build:electron": "tsc -p tsconfig.electron.json",
     "package": "npm run build && electron-builder --win nsis",
-    "package:portable": "npm run build && electron-builder --win portable"
+    "package:portable": "npm run build && electron-builder --win portable",
+    "package:appx": "npm run build && electron-builder --win appx"
   },
   "dependencies": {
     "jspdf": "^2.5.2",
@@ -64,6 +65,19 @@
       "createStartMenuShortcut": true,
       "shortcutName": "Passport Photo Studio Pro",
       "uninstallDisplayName": "Passport Photo Studio Pro"
+    },
+    "appx": {
+      "applicationId": "PassportPhotoStudioPro",
+      "identityName": "PassportPhotoStudioPro",
+      "displayName": "Passport Photo Studio Pro",
+      "publisherDisplayName": "Passport Photo Studio Pro",
+      "publisher": "CN=PassportPhotoStudioPro",
+      "showNameOnTiles": true,
+      "artifactName": "PassportPhotoStudioPro-Store.${ext}",
+      "languages": [
+        "en-US",
+        "hi-IN"
+      ]
     }
   }
 }

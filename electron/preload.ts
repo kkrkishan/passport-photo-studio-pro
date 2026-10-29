@@ -11,6 +11,9 @@ export interface ElectronAPI {
   saveExport: (payload: { dataBase64: string; defaultName: string; format: 'pdf' | 'png' | 'jpg' | 'webp' }) => Promise<{ success: boolean; canceled?: boolean; filePath?: string; verifiedBytes?: number }>;
   verifyFileSize: (filePath: string) => Promise<{ success: boolean; size?: number; error?: string }>;
   printPage: () => Promise<boolean>;
+  checkForUpdates: (simulateTest?: boolean) => Promise<any>;
+  openExternal: (url: string) => Promise<boolean>;
+  onShowUpdateModal: (callback: (info: any) => void) => () => void;
   platform: string;
 }
 
@@ -25,6 +28,15 @@ const electronAPI: ElectronAPI = {
   saveExport: (payload) => ipcRenderer.invoke('dialog:saveExport', payload),
   verifyFileSize: (filePath) => ipcRenderer.invoke('system:verifyFileSize', filePath),
   printPage: () => ipcRenderer.invoke('system:printPage'),
+  checkForUpdates: (simulateTest) => ipcRenderer.invoke('system:checkForUpdates', simulateTest),
+  openExternal: (url) => ipcRenderer.invoke('system:openExternal', url),
+  onShowUpdateModal: (callback) => {
+    const handler = (_event: any, info: any) => callback(info);
+    ipcRenderer.on('app:showUpdateModal', handler);
+    return () => {
+      ipcRenderer.removeListener('app:showUpdateModal', handler);
+    };
+  },
   platform: process.platform,
 };
 

@@ -290,3 +290,14 @@ export interface BatchItem {
   outputBlob?: Blob;
 }
 
+export interface UpdateInfo {
+  hasUpdate: boolean;
+  currentVersion: string;
+  latestVersion: string;
+  releaseName?: string;
+  releaseUrl?: string;
+  releaseNotes?: string;
+  publishedAt?: string;
+}
+
+

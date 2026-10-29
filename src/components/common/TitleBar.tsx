@@ -24,6 +24,8 @@ interface TitleBarProps {
   onSaveProject: () => void;
   onPrint: () => void;
   onOpenAbout: () => void;
+  onCheckUpdates?: () => void;
+  hasUpdate?: boolean;
 }
 
 export const TitleBar: React.FC<TitleBarProps> = ({
@@ -34,6 +36,8 @@ export const TitleBar: React.FC<TitleBarProps> = ({
   onSaveProject,
   onPrint,
   onOpenAbout,
+  onCheckUpdates,
+  hasUpdate,
 }) => {
   const [isMaximized, setIsMaximized] = useState(false);
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
@@ -192,15 +196,33 @@ export const TitleBar: React.FC<TitleBarProps> = ({
                 e.stopPropagation();
                 setActiveMenu(activeMenu === 'help' ? null : 'help');
               }}
-              className={`px-2.5 py-1 rounded hover:bg-slate-800 transition ${activeMenu === 'help' ? 'bg-slate-800 text-white' : ''}`}
+              className={`px-2.5 py-1 rounded hover:bg-slate-800 transition relative flex items-center space-x-1.5 ${activeMenu === 'help' ? 'bg-slate-800 text-white' : ''}`}
             >
-              Help
+              <span>Help</span>
+              {hasUpdate && (
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+              )}
             </button>
             {activeMenu === 'help' && (
               <div
                 onClick={(e) => e.stopPropagation()}
-                className="absolute left-0 top-full mt-1 w-56 bg-slate-900 border border-slate-700/80 rounded-md shadow-2xl py-1 z-50 text-slate-200"
+                className="absolute left-0 top-full mt-1 w-64 bg-slate-900 border border-slate-700/80 rounded-md shadow-2xl py-1 z-50 text-slate-200"
               >
+                <button
+                  onClick={() => { onCheckUpdates?.(); setActiveMenu(null); }}
+                  className="w-full text-left px-3 py-2 hover:bg-blue-600 flex items-center justify-between transition group"
+                >
+                  <div className="flex items-center space-x-2">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-400 group-hover:text-white" />
+                    <span className="text-xs">Check for Updates (अपडेट जांचें)</span>
+                  </div>
+                  {hasUpdate && (
+                    <span className="text-[9px] px-1.5 py-0.2 bg-emerald-500 text-slate-950 font-bold rounded">
+                      NEW
+                    </span>
+                  )}
+                </button>
+                <div className="h-px bg-slate-800 my-1"></div>
                 <button
                   onClick={() => { onOpenAbout(); setActiveMenu(null); }}
                   className="w-full text-left px-3 py-1.5 hover:bg-blue-600 flex items-center space-x-2 transition"

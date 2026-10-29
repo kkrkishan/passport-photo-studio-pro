@@ -1,6 +1,7 @@
-import { app, BrowserWindow, ipcMain, dialog, Menu, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, Menu, shell, Notification } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
+import * as https from 'https';
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -195,7 +196,165 @@ ipcMain.handle('system:printPage', async () => {
   return true;
 });
 
+// Semver comparison helper
+function parseSemver(v: string): number[] {
+  const cleaned = v.replace(/^v/i, '').trim();
+  const parts = cleaned.split('.').map(n => parseInt(n, 10) || 0);
+  while (parts.length < 3) parts.push(0);
+  return parts;
+}
+
+function isNewerVersion(remoteVer: string, currentVer: string): boolean {
+  const [rMajor, rMinor, rPatch] = parseSemver(remoteVer);
+  const [cMajor, cMinor, cPatch] = parseSemver(currentVer);
+  if (rMajor > cMajor) return true;
+  if (rMajor < cMajor) return false;
+  if (rMinor > cMinor) return true;
+  if (rMinor < cMinor) return false;
+  return rPatch > cPatch;
+}
+
+function fetchLatestRelease(): Promise<any> {
+  return new Promise((resolve) => {
+    const options = {
+      hostname: 'api.github.com',
+      path: '/repos/kkrkishan/passport-photo-studio-pro/releases/latest',
+      headers: {
+        'User-Agent': 'PassportPhotoStudioPro-DesktopApp'
+      }
+    };
+    const req = https.get(options, (res) => {
+      if (res.statusCode === 404 || (res.statusCode && res.statusCode >= 400)) {
+        resolve(null);
+        return;
+      }
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        try {
+          resolve(JSON.parse(data));
+        } catch (e) {
+          resolve(null);
+        }
+      });
+    });
+    req.on('error', () => resolve(null));
+    req.setTimeout(6000, () => {
+      req.destroy();
+      resolve(null);
+    });
+  });
+}
+
+// Update Checker IPC
+ipcMain.handle('system:checkForUpdates', async (_event, simulateTest: boolean = false) => {
+  try {
+    const currentVersion = app.getVersion();
+
+    // If simulateTest is requested (for demonstration/testing of notifications)
+    if (simulateTest) {
+      const testInfo = {
+        success: true,
+        hasUpdate: true,
+        currentVersion,
+        latestVersion: 'v1.1.0',
+        releaseName: 'Passport Photo Studio Pro v1.1.0 Update',
+        releaseUrl: 'https://github.com/kkrkishan/passport-photo-studio-pro/releases',
+        releaseNotes: '• Added Microsoft Store APPX/MSIX Package Support\n• Added Instant Update Notification System\n• Performance optimizations and bug fixes',
+        publishedAt: new Date().toISOString()
+      };
+
+      if (Notification.isSupported()) {
+        const notif = new Notification({
+          title: '🚀 नया अपडेट उपलब्ध है! (Update Available)',
+          body: `Passport Photo Studio Pro का नया संस्करण (${testInfo.latestVersion}) उपलब्ध है।`,
+          icon: path.join(__dirname, '../public/icon.png')
+        });
+        notif.on('click', () => {
+          if (mainWindow) {
+            if (mainWindow.isMinimized()) mainWindow.restore();
+            mainWindow.focus();
+            mainWindow.webContents.send('app:showUpdateModal', testInfo);
+          }
+        });
+        notif.show();
+      }
+
+      mainWindow?.webContents.send('app:showUpdateModal', testInfo);
+      return testInfo;
+    }
+
+    const releaseData = await fetchLatestRelease();
+
+    if (!releaseData || !releaseData.tag_name) {
+      return {
+        success: true,
+        hasUpdate: false,
+        currentVersion,
+        latestVersion: currentVersion,
+        message: 'आप पहले से ही नवीनतम संस्करण का उपयोग कर रहे हैं।'
+      };
+    }
+
+    const latestVersion = releaseData.tag_name;
+    const hasUpdate = isNewerVersion(latestVersion, currentVersion);
+
+    const updateInfo = {
+      success: true,
+      hasUpdate,
+      currentVersion,
+      latestVersion,
+      releaseName: releaseData.name || latestVersion,
+      releaseUrl: releaseData.html_url || 'https://github.com/kkrkishan/passport-photo-studio-pro/releases',
+      releaseNotes: releaseData.body || 'New features, performance enhancements, and bug fixes.',
+      publishedAt: releaseData.published_at
+    };
+
+    if (hasUpdate) {
+      if (Notification.isSupported()) {
+        const notif = new Notification({
+          title: '🚀 नया अपडेट उपलब्ध है! (Update Available)',
+          body: `Passport Photo Studio Pro का नया संस्करण (${latestVersion}) उपलब्ध है। डाउनलोड करने के लिए क्लिक करें।`,
+          icon: path.join(__dirname, '../public/icon.png')
+        });
+        notif.on('click', () => {
+          if (mainWindow) {
+            if (mainWindow.isMinimized()) mainWindow.restore();
+            mainWindow.focus();
+            mainWindow.webContents.send('app:showUpdateModal', updateInfo);
+          }
+          if (updateInfo.releaseUrl) {
+            shell.openExternal(updateInfo.releaseUrl);
+          }
+        });
+        notif.show();
+      }
+
+      mainWindow?.webContents.send('app:showUpdateModal', updateInfo);
+    }
+
+    return updateInfo;
+  } catch (err: any) {
+    return {
+      success: false,
+      hasUpdate: false,
+      error: err.message || 'अपडेट की जांच करने में असमर्थ।'
+    };
+  }
+});
+
+ipcMain.handle('system:openExternal', async (_event, url: string) => {
+  if (url && (url.startsWith('https://') || url.startsWith('http://'))) {
+    await shell.openExternal(url);
+    return true;
+  }
+  return false;
+});
+
 app.whenReady().then(() => {
+  if (process.platform === 'win32') {
+    app.setAppUserModelId('com.passportphoto.studiopro');
+  }
   createWindow();
 
   app.on('activate', () => {

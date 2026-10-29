@@ -1,12 +1,13 @@
 import React from 'react';
-import { X, ShieldCheck, Cpu, HardDrive, CheckCircle2, Award } from 'lucide-react';
+import { X, ShieldCheck, Cpu, HardDrive, CheckCircle2, Award, Sparkles } from 'lucide-react';
 
 interface AboutModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onCheckUpdates?: () => void;
 }
 
-export const AboutModal: React.FC<AboutModalProps> = ({ isOpen, onClose }) => {
+export const AboutModal: React.FC<AboutModalProps> = ({ isOpen, onClose, onCheckUpdates }) => {
   if (!isOpen) return null;
 
   return (
@@ -83,13 +84,22 @@ export const AboutModal: React.FC<AboutModalProps> = ({ isOpen, onClose }) => {
 
         {/* Footer */}
         <div className="px-6 py-3.5 bg-slate-950/60 border-t border-slate-800 flex justify-between items-center text-[11px] text-slate-400">
-          <span>Engineered for Windows 10 & 11</span>
           <button
-            onClick={onClose}
-            className="px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-medium transition"
+            onClick={() => { onClose(); onCheckUpdates?.(); }}
+            className="flex items-center space-x-1.5 px-3 py-1 bg-slate-800/90 hover:bg-slate-700 text-blue-300 rounded-lg text-xs font-medium transition border border-slate-700/80 shadow-sm"
           >
-            Close
+            <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+            <span>Check for Updates (अपडेट जांचें)</span>
           </button>
+          <div className="flex items-center space-x-3">
+            <span className="hidden sm:inline">Engineered for Windows 10 & 11</span>
+            <button
+              onClick={onClose}
+              className="px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-medium transition"
+            >
+              Close
+            </button>
+          </div>
         </div>
       </div>
     </div>

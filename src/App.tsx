@@ -5,13 +5,17 @@ import { PassportStudio } from './components/passport/PassportStudio';
 import { DocumentScanner } from './components/scanner/DocumentScanner';
 import { ResizerStudio } from './components/resizer/ResizerStudio';
 import { AboutModal } from './components/common/AboutModal';
-import { ActiveModule } from './types';
+import { UpdateModal } from './components/common/UpdateModal';
+import { ActiveModule, UpdateInfo } from './types';
 import { createProjectJSON, parseProjectJSON } from './services/projectService';
 
 export const App: React.FC = () => {
   const [activeModule, setActiveModule] = useState<ActiveModule>('dashboard');
   const [isAboutOpen, setIsAboutOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
+  const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
+  const [hasUpdate, setHasUpdate] = useState(false);
 
   const electronAPI = (window as any).electronAPI;
 
@@ -19,6 +23,52 @@ export const App: React.FC = () => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3000);
   };
+
+  const handleCheckForUpdates = async (isManual = false) => {
+    if (electronAPI && electronAPI.checkForUpdates) {
+      if (isManual) {
+        showToast('अपडेट की जांच हो रही है... (Checking for updates)');
+      }
+      try {
+        const res = await electronAPI.checkForUpdates();
+        if (res && res.hasUpdate) {
+          setUpdateInfo(res);
+          setHasUpdate(true);
+          setIsUpdateModalOpen(true);
+        } else if (isManual) {
+          showToast('✅ आप पहले से ही नवीनतम वर्ज़न (v1.0.0) का उपयोग कर रहे हैं।');
+        }
+      } catch (e) {
+        if (isManual) {
+          showToast('अपडेट जांचने में समस्या आई। कृपया इंटरनेट चेक करें।');
+        }
+      }
+    } else {
+      if (isManual) {
+        showToast('अपडेट चेक केवल Windows Desktop मोड में उपलब्ध है।');
+      }
+    }
+  };
+
+  // Listen for native notification click or main process update events
+  useEffect(() => {
+    if (electronAPI && electronAPI.onShowUpdateModal) {
+      const cleanup = electronAPI.onShowUpdateModal((info: UpdateInfo) => {
+        setUpdateInfo(info);
+        setHasUpdate(true);
+        setIsUpdateModalOpen(true);
+      });
+      return cleanup;
+    }
+  }, [electronAPI]);
+
+  // Automatic silent update check on startup
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      handleCheckForUpdates(false);
+    }, 4000);
+    return () => clearTimeout(timer);
+  }, []);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -107,6 +157,8 @@ export const App: React.FC = () => {
         onSaveProject={handleSaveProject}
         onPrint={handlePrint}
         onOpenAbout={() => setIsAboutOpen(true)}
+        onCheckUpdates={() => handleCheckForUpdates(true)}
+        hasUpdate={hasUpdate}
       />
 
       {/* Main Workspace Area */}
@@ -142,6 +194,14 @@ export const App: React.FC = () => {
       <AboutModal
         isOpen={isAboutOpen}
         onClose={() => setIsAboutOpen(false)}
+        onCheckUpdates={() => handleCheckForUpdates(true)}
+      />
+
+      {/* Update Notification Modal */}
+      <UpdateModal
+        isOpen={isUpdateModalOpen}
+        updateInfo={updateInfo}
+        onClose={() => setIsUpdateModalOpen(false)}
       />
     </div>
   );
