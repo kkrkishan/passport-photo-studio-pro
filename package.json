@@ -67,13 +67,13 @@
       "uninstallDisplayName": "Passport Photo Studio Pro"
     },
     "appx": {
-      "applicationId": "PassportPhotoStudioPro",
-      "identityName": "PassportPhotoStudioPro",
-      "displayName": "Passport Photo Studio Pro",
-      "publisherDisplayName": "Passport Photo Studio Pro",
-      "publisher": "CN=PassportPhotoStudioPro",
+      "applicationId": "PassportPhotoStudio",
+      "identityName": "kkrkishan.PassportPhotoStudio",
+      "displayName": "Passport Photo Studio",
+      "publisherDisplayName": "kkrkishan",
+      "publisher": "CN=7AB9EB13-5C49-4A1C-95D7-56862452C8DF",
       "showNameOnTiles": true,
-      "artifactName": "PassportPhotoStudioPro-Store.${ext}",
+      "artifactName": "PassportPhotoStudio-Store.${ext}",
       "languages": [
         "en-US",
         "hi-IN"
