@@ -7,7 +7,9 @@ import {
   Grid,
   Check,
   Sparkles,
-  Maximize2
+  Pipette,
+  Eraser,
+  Paintbrush
 } from 'lucide-react';
 import { PhotoPreset, Adjustments, BackgroundSettings, CropBox } from '../../types';
 import { applyAdjustments, applyStudioBackground, detectFaceAndAutoCrop } from '../../services/imageProcessing';
@@ -25,6 +27,9 @@ export interface PhotoEditorProps {
   onApplyCrop: (croppedCanvas: HTMLCanvasElement) => void;
   beforeAfterMode: boolean;
   previewOnly?: boolean;
+  isEyedropperActive?: boolean;
+  onPickColor?: (hex: string) => void;
+  brushMaskCanvasRef?: React.MutableRefObject<HTMLCanvasElement | null>;
 }
 
 export const PhotoEditor: React.FC<PhotoEditorProps> = ({
@@ -39,9 +44,14 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({
   onApplyCrop,
   beforeAfterMode,
   previewOnly = false,
+  isEyedropperActive = false,
+  onPickColor,
+  brushMaskCanvasRef,
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const internalBrushMaskRef = useRef<HTMLCanvasElement | null>(null);
+  const effectiveBrushCanvasRef = brushMaskCanvasRef || internalBrushMaskRef;
 
   const [imageObj, setImageObj] = useState<HTMLImageElement | null>(null);
   const [zoom, setZoom] = useState(1);
@@ -50,6 +60,10 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({
   const [dragHandle, setDragHandle] = useState<string | null>(null);
   const [dragStart, setDragStart] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [initialCropAtDrag, setInitialCropAtDrag] = useState<CropBox | null>(null);
+
+  // Brush painting & visual cursor state
+  const [isPaintingBrush, setIsPaintingBrush] = useState(false);
+  const [brushCursor, setBrushCursor] = useState<{ x: number; y: number; visible: boolean } | null>(null);
 
   // Active crop box: use controlled prop if provided, otherwise fallback to local state
   const activeCropBox: CropBox = controlledCropBox || localCropBox;
@@ -99,25 +113,6 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({
     img.src = imageSrc;
   }, [imageSrc]);
 
-  // Adjust crop aspect when preset changes without moving center
-  useEffect(() => {
-    if (!imageObj) return;
-    const cur = activeCropBox;
-    let newW = cur.width;
-    let newH = cur.width / targetAspect;
-    if (newH > imageObj.naturalHeight) {
-      newH = imageObj.naturalHeight;
-      newW = newH * targetAspect;
-    }
-    const updated: CropBox = {
-      ...cur,
-      width: Math.round(newW),
-      height: Math.round(newH),
-    };
-    setLocalCropBox(updated);
-    onCropChange?.(updated);
-  }, [targetAspect]);
-
   // Fast GPU/Canvas Render with Pre-scaled Resolution (Buttery Smooth 60 FPS)
   const renderCanvas = useCallback(() => {
     if (!imageObj || !canvasRef.current) return;
@@ -160,9 +155,9 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({
       // Fast single-pass adjustments
       applyAdjustments(imgData, adjustments);
 
-      // Studio Background Replacement
+      // Studio Background Replacement & Offline Smart AI Portrait
       if (background.enabled) {
-        applyStudioBackground(imgData, background);
+        applyStudioBackground(imgData, background, effectiveBrushCanvasRef.current);
       }
 
       ctx.putImageData(imgData, 0, 0);
@@ -180,8 +175,77 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({
     };
   }, [renderCanvas]);
 
-  // Mouse interaction for crop box resizing & moving
+  // Sample color from canvas pixel under screen coordinate
+  const sampleColorAtPoint = (clientX: number, clientY: number) => {
+    if (!canvasRef.current) return;
+    const canvas = canvasRef.current;
+    const rect = canvas.getBoundingClientRect();
+    if (clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom) return;
+
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const cx = Math.max(0, Math.min(canvas.width - 1, Math.round((clientX - rect.left) * scaleX)));
+    const cy = Math.max(0, Math.min(canvas.height - 1, Math.round((clientY - rect.top) * scaleY)));
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const p = ctx.getImageData(cx, cy, 1, 1).data;
+    const hex = `#${((1 << 24) + (p[0] << 16) + (p[1] << 8) + p[2]).toString(16).slice(1)}`;
+    onPickColor?.(hex);
+  };
+
+  // Draw manual stroke (Erase or Restore) onto mask canvas
+  const drawBrushPoint = (clientX: number, clientY: number) => {
+    if (!canvasRef.current) return;
+    const canvas = canvasRef.current;
+    if (!effectiveBrushCanvasRef.current) {
+      effectiveBrushCanvasRef.current = document.createElement('canvas');
+    }
+    const bCanvas = effectiveBrushCanvasRef.current;
+    if (bCanvas.width !== canvas.width || bCanvas.height !== canvas.height) {
+      bCanvas.width = canvas.width;
+      bCanvas.height = canvas.height;
+    }
+    const bCtx = bCanvas.getContext('2d');
+    if (!bCtx) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const cx = (clientX - rect.left) * scaleX;
+    const cy = (clientY - rect.top) * scaleY;
+
+    const displayScale = rect.width / canvas.width;
+    const radius = Math.max(3, (background.brushSize || 25) / (2 * Math.max(0.1, displayScale)));
+
+    bCtx.save();
+    bCtx.beginPath();
+    bCtx.arc(cx, cy, radius, 0, Math.PI * 2);
+    if (background.brushMode === 'erase') {
+      bCtx.fillStyle = 'rgba(255, 0, 0, 1)';
+    } else {
+      bCtx.fillStyle = 'rgba(0, 255, 0, 1)';
+    }
+    bCtx.fill();
+    bCtx.restore();
+
+    renderCanvas();
+  };
+
+  // Mouse interaction for crop box resizing & moving or Eyedropper / Brush
   const handleMouseDown = (e: React.MouseEvent, handle: string | null = null) => {
+    if (isEyedropperActive) {
+      sampleColorAtPoint(e.clientX, e.clientY);
+      return;
+    }
+
+    if (background.brushMode && background.brushMode !== 'none') {
+      setIsPaintingBrush(true);
+      drawBrushPoint(e.clientX, e.clientY);
+      setBrushCursor({ x: e.clientX, y: e.clientY, visible: true });
+      return;
+    }
+
     if (previewOnly) return;
     e.stopPropagation();
     if (!canvasRef.current || !imageObj) return;
@@ -198,6 +262,14 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
+    if (background.brushMode && background.brushMode !== 'none') {
+      setBrushCursor({ x: e.clientX, y: e.clientY, visible: true });
+      if (isPaintingBrush) {
+        drawBrushPoint(e.clientX, e.clientY);
+      }
+      return;
+    }
+
     if (previewOnly || !isDraggingCrop || !initialCropAtDrag || !canvasRef.current || !imageObj) return;
 
     const rect = canvasRef.current.getBoundingClientRect();
@@ -285,11 +357,12 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({
   };
 
   const handleMouseUp = () => {
+    setIsPaintingBrush(false);
     setIsDraggingCrop(false);
     setDragHandle(null);
   };
 
-  // Touch handlers with 2-Finger Pinch Zoom and Zero-Jitter Physical Delta Tracking
+  // Touch handlers with 2-Finger Pinch Zoom, Eyedropper, Brush, and Physical Delta Tracking
   const handleTouchStart = (e: React.TouchEvent, handle: string | null = null) => {
     // 2-Finger Pinch-to-Zoom detected
     if (e.touches.length === 2) {
@@ -300,6 +373,21 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({
       pinchStartDistRef.current = dist;
       pinchStartZoomRef.current = zoom;
       return;
+    }
+
+    if (e.touches.length === 1) {
+      const touch = e.touches[0];
+      if (isEyedropperActive) {
+        sampleColorAtPoint(touch.clientX, touch.clientY);
+        return;
+      }
+
+      if (background.brushMode && background.brushMode !== 'none') {
+        setIsPaintingBrush(true);
+        drawBrushPoint(touch.clientX, touch.clientY);
+        setBrushCursor({ x: touch.clientX, y: touch.clientY, visible: true });
+        return;
+      }
     }
 
     if (previewOnly) return;
@@ -331,6 +419,16 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({
       const factor = dist / pinchStartDistRef.current;
       const newZoom = Math.min(3.0, Math.max(0.4, pinchStartZoomRef.current * factor));
       setZoom(Number(newZoom.toFixed(2)));
+      return;
+    }
+
+    if (e.touches.length === 1 && background.brushMode && background.brushMode !== 'none') {
+      e.preventDefault();
+      const touch = e.touches[0];
+      setBrushCursor({ x: touch.clientX, y: touch.clientY, visible: true });
+      if (isPaintingBrush) {
+        drawBrushPoint(touch.clientX, touch.clientY);
+      }
       return;
     }
 
@@ -418,24 +516,25 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({
   };
 
   const handleTouchEnd = () => {
-    pinchStartDistRef.current = null;
-    touchStartRef.current = null;
+    setIsPaintingBrush(false);
+    setBrushCursor(null);
     setIsDraggingCrop(false);
     setDragHandle(null);
+    touchStartRef.current = null;
+    pinchStartDistRef.current = null;
   };
 
-  // Helper to generate full-resolution 300 DPI cropped canvas with adjustments
+  // Create full-resolution cropped canvas for single export & sheet layout
   const createFullQualityCroppedCanvas = (): HTMLCanvasElement | null => {
     if (!imageObj) return null;
 
-    const dpi = 300;
-    const outW = Math.round((preset.widthMm / 25.4) * dpi);
-    const outH = Math.round((preset.heightMm / 25.4) * dpi);
+    // Physical dimensions at 300 DPI
+    const outW = Math.round((preset.widthMm / 25.4) * 300);
+    const outH = Math.round((preset.heightMm / 25.4) * 300);
 
     const croppedCanvas = document.createElement('canvas');
     croppedCanvas.width = outW;
     croppedCanvas.height = outH;
-
     const ctx = croppedCanvas.getContext('2d', { willReadFrequently: true });
     if (!ctx) return null;
 
@@ -460,7 +559,7 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({
       const imgData = ctx.getImageData(0, 0, outW, outH);
       applyAdjustments(imgData, adjustments);
       if (background.enabled) {
-        applyStudioBackground(imgData, background);
+        applyStudioBackground(imgData, background, effectiveBrushCanvasRef.current);
       }
       ctx.putImageData(imgData, 0, 0);
     }
@@ -516,13 +615,51 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({
   return (
     <div
       ref={containerRef}
+      onMouseDown={(e) => handleMouseDown(e, null)}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
+      onTouchStart={(e) => handleTouchStart(e, null)}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
       style={{ touchAction: 'none' }}
-      className="relative flex-1 w-full h-full bg-[#0b0f19] flex flex-col items-center justify-center p-2 sm:p-4 overflow-hidden select-none"
+      className={`relative flex-1 w-full h-full bg-[#0b0f19] flex flex-col items-center justify-center p-2 sm:p-4 overflow-hidden select-none ${
+        isEyedropperActive ? 'cursor-crosshair' : background.brushMode && background.brushMode !== 'none' ? 'cursor-crosshair' : ''
+      }`}
     >
+      {/* Visual Live Brush Circle Cursor */}
+      {brushCursor && brushCursor.visible && background.brushMode && background.brushMode !== 'none' && (
+        <div
+          className="fixed pointer-events-none rounded-full border-2 border-white shadow-[0_0_8px_rgba(0,0,0,0.8)] -translate-x-1/2 -translate-y-1/2 z-50 transition-opacity"
+          style={{
+            left: `${brushCursor.x}px`,
+            top: `${brushCursor.y}px`,
+            width: `${background.brushSize || 25}px`,
+            height: `${background.brushSize || 25}px`,
+            backgroundColor: background.brushMode === 'erase' ? 'rgba(239, 68, 68, 0.35)' : 'rgba(16, 185, 129, 0.35)',
+          }}
+        />
+      )}
+
+      {/* Eyedropper Instruction Banner */}
+      {isEyedropperActive && (
+        <div className="absolute top-2 left-1/2 -translate-x-1/2 z-30 bg-amber-500 text-slate-950 font-bold px-3 py-1 rounded-full shadow-lg text-[11px] animate-pulse flex items-center space-x-1.5 pointer-events-none">
+          <Pipette className="w-3.5 h-3.5" />
+          <span>फोटो पर कहीं भी टैप करें - बैकग्राउंड कलर सेलेक्ट हो जाएगा</span>
+        </div>
+      )}
+
+      {/* Active Brush Instruction Banner */}
+      {!isEyedropperActive && background.brushMode && background.brushMode !== 'none' && (
+        <div
+          className={`absolute top-2 left-1/2 -translate-x-1/2 z-30 ${
+            background.brushMode === 'erase' ? 'bg-rose-600' : 'bg-emerald-600'
+          } text-white font-bold px-3.5 py-1 rounded-full shadow-lg text-[11px] flex items-center space-x-1.5 pointer-events-none animate-fade-in`}
+        >
+          {background.brushMode === 'erase' ? <Eraser className="w-3.5 h-3.5" /> : <Paintbrush className="w-3.5 h-3.5" />}
+          <span>{background.brushMode === 'erase' ? 'इरेज़र ब्रश एक्टिव (मिटाएं)' : 'रीस्टोर ब्रश एक्टिव (वापस लाएं)'}</span>
+        </div>
+      )}
+
       {/* Desktop Top Floating Toolbar */}
       {!previewOnly && (
         <div className="hidden md:flex w-[96%] max-w-3xl z-20 items-center justify-between gap-1.5 bg-slate-900/95 backdrop-blur-md px-3 py-1.5 rounded-xl border border-slate-700/80 shadow-2xl mb-2">
@@ -574,29 +711,27 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({
             </button>
           </div>
 
-          <div className="flex flex-wrap items-center gap-1.5">
+          <div className="flex items-center space-x-2">
             <button
               onClick={() => handleSaveSinglePhoto('jpg')}
-              className="flex items-center space-x-1 px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-medium border border-slate-700 transition"
-              title="Save Single Edited Passport Photo (JPG)"
+              className="flex items-center space-x-1 px-3 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white rounded-lg text-xs font-medium border border-slate-700 active:scale-95 transition"
+              title="Save Single JPG"
             >
               <FileDown className="w-3.5 h-3.5 text-blue-400" />
               <span>JPG</span>
             </button>
-
             <button
               onClick={() => handleSaveSinglePhoto('png')}
-              className="flex items-center space-x-1 px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-medium border border-slate-700 transition"
-              title="Save Single Edited Passport Photo (PNG)"
+              className="flex items-center space-x-1 px-3 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white rounded-lg text-xs font-medium border border-slate-700 active:scale-95 transition"
+              title="Save Single PNG"
             >
               <FileDown className="w-3.5 h-3.5 text-cyan-400" />
               <span>PNG</span>
             </button>
-
             <button
               onClick={handleExportCropped}
-              className="flex items-center space-x-1 px-2.5 py-1 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-lg text-xs font-semibold shadow-md shadow-blue-900/40 transition active:scale-95"
-              title="Create Multi-Photo Print Sheet (4x6 or A4)"
+              className="flex items-center space-x-1.5 px-3.5 py-1 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 text-white rounded-lg text-xs font-bold shadow-md shadow-blue-900/40 active:scale-95 transition"
+              title="Prepare Print Sheet"
             >
               <Grid className="w-3.5 h-3.5" />
               <span>Sheet Maker</span>
@@ -605,7 +740,7 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({
         </div>
       )}
 
-      {/* Floating Badges for Mobile Canvas (Always Visible for quick Zoom & Auto Crop) */}
+      {/* Floating Badges for Mobile Canvas (Preset info & Auto Crop) */}
       <div className="flex md:hidden absolute top-2 left-2 z-20 items-center space-x-1 bg-slate-900/90 backdrop-blur-md px-2.5 py-1 rounded-xl border border-slate-700/80 text-[11px] font-bold text-blue-400 shadow-lg">
         <span>{preset.name}</span>
         {!previewOnly && (
@@ -620,8 +755,14 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({
         )}
       </div>
 
-      {/* Mobile Floating Zoom Dock (Available in both Editor & 50-50 Split Views) */}
-      <div className="flex md:hidden absolute top-2 right-2 z-20 items-center space-x-1 bg-slate-900/90 backdrop-blur-md px-2 py-1 rounded-xl border border-slate-700/80 shadow-lg">
+      {/* Mobile Floating Zoom Dock:
+          In 50-50 Split view (previewOnly=true), positioned at BOTTOM-RIGHT (bottom-2 right-2)
+          so that it NEVER collides with the [Done] button at TOP-RIGHT (top-2 right-2)! */}
+      <div
+        className={`flex md:hidden absolute ${
+          previewOnly ? 'bottom-2 right-2' : 'top-2 right-2'
+        } z-20 items-center space-x-1 bg-slate-900/90 backdrop-blur-md px-2 py-1 rounded-xl border border-slate-700/80 shadow-lg`}
+      >
         {!previewOnly && (
           <>
             <button
@@ -674,7 +815,7 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({
       >
         <canvas
           ref={canvasRef}
-          className="max-h-[66vh] max-w-[88vw] object-contain rounded-lg shadow-2xl border border-slate-800 pointer-events-none"
+          className="max-h-[66vh] max-w-[88vw] object-contain rounded-lg shadow-2xl border border-slate-800"
         />
 
         {/* Interactive Crop Box Overlay (Hidden when previewOnly) */}

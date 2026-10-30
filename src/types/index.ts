@@ -69,14 +69,35 @@ export const DEFAULT_ADJUSTMENTS: Adjustments = {
   flipV: false,
 };
 
+export type BackgroundMode = 'smart_ai' | 'color_key' | 'blur';
+export type BrushToolMode = 'none' | 'erase' | 'restore';
+
 export interface BackgroundSettings {
   enabled: boolean;
+  mode?: BackgroundMode;
   color: string; // hex
   tolerance: number; // 0 to 100
   feather: number;   // 0 to 20
   sourceColor?: string; // hex or rgb of source color to remove (optional)
   transparent?: boolean; // make removed background transparent
+  blurRadius?: number; // 0 to 30px (DSLR portrait bokeh blur)
+  brushMode?: BrushToolMode; // 'none' | 'erase' | 'restore'
+  brushSize?: number; // 5 to 80px
+  brushMaskDataUrl?: string | null; // serialized custom brush mask data
 }
+
+export const DEFAULT_BACKGROUND_SETTINGS: BackgroundSettings = {
+  enabled: false,
+  mode: 'smart_ai',
+  color: '#ffffff',
+  tolerance: 30,
+  feather: 4,
+  transparent: false,
+  blurRadius: 0,
+  brushMode: 'none',
+  brushSize: 25,
+  brushMaskDataUrl: null,
+};
 
 export interface SheetConfig {
   paperId: string;

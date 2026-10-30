@@ -49,13 +49,39 @@ export const PassportStudio: React.FC<PassportStudioProps> = ({ onNotify }) => {
   const [history, setHistory] = useState<Adjustments[]>([DEFAULT_ADJUSTMENTS]);
   const [historyIdx, setHistoryIdx] = useState(0);
 
-  // Background Studio State
+  // Background Studio State & Tools
   const [background, setBackground] = useState<BackgroundSettings>({
     enabled: false,
+    mode: 'smart_ai',
     color: '#ffffff',
     tolerance: 30,
     feather: 4,
+    blurRadius: 0,
+    brushMode: 'none',
+    brushSize: 25,
   });
+  const [isEyedropperActive, setIsEyedropperActive] = useState(false);
+  const brushMaskCanvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  const handlePickColor = (hex: string) => {
+    setBackground((prev) => ({
+      ...prev,
+      enabled: true,
+      sourceColor: hex,
+    }));
+    setIsEyedropperActive(false);
+    onNotify?.(`Selected backdrop color: ${hex}`);
+  };
+
+  const handleClearBrushMask = () => {
+    if (brushMaskCanvasRef.current) {
+      const bCanvas = brushMaskCanvasRef.current;
+      const bCtx = bCanvas.getContext('2d');
+      bCtx?.clearRect(0, 0, bCanvas.width, bCanvas.height);
+    }
+    setBackground((prev) => ({ ...prev, brushMaskDataUrl: null }));
+    onNotify?.('Manual brush marks cleared.');
+  };
 
   // Biometric & View State
   const [showFaceGuide, setShowFaceGuide] = useState(true);
@@ -504,6 +530,9 @@ export const PassportStudio: React.FC<PassportStudioProps> = ({ onNotify }) => {
                 onCropChange={setCropBox}
                 onApplyCrop={handleApplyCrop}
                 beforeAfterMode={beforeAfterMode}
+                isEyedropperActive={isEyedropperActive}
+                onPickColor={handlePickColor}
+                brushMaskCanvasRef={brushMaskCanvasRef}
               />
             </div>
             <div className="flex flex-col h-full w-80 overflow-y-auto shrink-0 border-l border-slate-800">
@@ -518,6 +547,9 @@ export const PassportStudio: React.FC<PassportStudioProps> = ({ onNotify }) => {
               <BackgroundStudio
                 settings={background}
                 onChange={setBackground}
+                isEyedropperActive={isEyedropperActive}
+                onToggleEyedropper={() => setIsEyedropperActive(!isEyedropperActive)}
+                onClearBrushMask={handleClearBrushMask}
               />
             </div>
           </div>
@@ -539,6 +571,9 @@ export const PassportStudio: React.FC<PassportStudioProps> = ({ onNotify }) => {
                   onApplyCrop={handleApplyCrop}
                   beforeAfterMode={beforeAfterMode}
                   previewOnly={false}
+                  isEyedropperActive={isEyedropperActive}
+                  onPickColor={handlePickColor}
+                  brushMaskCanvasRef={brushMaskCanvasRef}
                 />
               </div>
             ) : (
@@ -558,9 +593,15 @@ export const PassportStudio: React.FC<PassportStudioProps> = ({ onNotify }) => {
                     onApplyCrop={handleApplyCrop}
                     beforeAfterMode={beforeAfterMode}
                     previewOnly={true}
+                    isEyedropperActive={isEyedropperActive}
+                    onPickColor={handlePickColor}
+                    brushMaskCanvasRef={brushMaskCanvasRef}
                   />
                   <button
-                    onClick={() => setMobileTab('editor')}
+                    onClick={() => {
+                      setIsEyedropperActive(false);
+                      setMobileTab('editor');
+                    }}
                     className="absolute top-2 right-2 px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-blue-900/40 active:scale-95 transition z-30 flex items-center space-x-1"
                   >
                     <Check className="w-3.5 h-3.5" />
@@ -584,6 +625,9 @@ export const PassportStudio: React.FC<PassportStudioProps> = ({ onNotify }) => {
                     <BackgroundStudio
                       settings={background}
                       onChange={setBackground}
+                      isEyedropperActive={isEyedropperActive}
+                      onToggleEyedropper={() => setIsEyedropperActive(!isEyedropperActive)}
+                      onClearBrushMask={handleClearBrushMask}
                     />
                   )}
                 </div>
