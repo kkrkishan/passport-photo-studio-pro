@@ -67,7 +67,13 @@ export const TitleBar: React.FC<TitleBarProps> = ({
   }, []);
 
   return (
-    <header className="h-10 bg-slate-900 border-b border-slate-800 flex items-center justify-between px-3 select-none z-50 text-xs text-slate-300 relative" style={{ WebkitAppRegion: 'drag' } as any}>
+    <header
+      className="min-h-11 md:h-10 bg-slate-900 border-b border-slate-800 flex items-center justify-between px-3 select-none z-50 text-xs text-slate-300 relative"
+      style={{
+        paddingTop: 'env(safe-area-inset-top, 0px)',
+        WebkitAppRegion: 'drag',
+      } as any}
+    >
       {/* Left: App Logo, Name & Menu bar */}
       <div className="flex items-center space-x-2 min-w-0" style={{ WebkitAppRegion: 'no-drag' } as any}>
         <div className="flex items-center space-x-2 font-bold tracking-wider text-blue-400 shrink-0">

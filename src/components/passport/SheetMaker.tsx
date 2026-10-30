@@ -316,18 +316,87 @@ export const SheetMaker: React.FC<SheetMakerProps> = ({
       </div>
 
       {/* Print Guides: Borders & Cut Lines */}
-      <div className="space-y-2.5 border-t border-slate-800 pt-3">
-        <div className="text-slate-300 font-bold text-xs">Print Guides & Marks</div>
+      <div className="space-y-3 border-t border-slate-800 pt-3">
+        <div className="text-slate-300 font-bold text-xs">Print Guides & Borders</div>
 
-        <label className="flex items-center space-x-2.5 cursor-pointer select-none">
-          <input
-            type="checkbox"
-            checked={config.showBorders}
-            onChange={(e) => updateConfig('showBorders', e.target.checked)}
-            className="rounded bg-slate-800 border-slate-700 text-blue-600 focus:ring-0 w-4 h-4"
-          />
-          <span className="text-slate-300 text-xs">Thin Photo Border (0.5pt black outline)</span>
-        </label>
+        {/* Border Toggle & Customization */}
+        <div className="space-y-2 p-2.5 rounded-xl bg-slate-800/50 border border-slate-700/60">
+          <label className="flex items-center space-x-2.5 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={config.showBorders}
+              onChange={(e) => updateConfig('showBorders', e.target.checked)}
+              className="rounded bg-slate-800 border-slate-700 text-blue-600 focus:ring-0 w-4 h-4"
+            />
+            <span className="text-slate-200 font-semibold text-xs">Add Photo Border (फ़ोटो बॉर्डर)</span>
+          </label>
+
+          {config.showBorders && (
+            <div className="pl-6 space-y-2 pt-1 border-t border-slate-700/40 mt-1.5">
+              {/* Border Width Slider */}
+              <div className="space-y-1">
+                <div className="flex justify-between text-[11px] text-slate-400">
+                  <span>Border Size</span>
+                  <span className="font-mono text-cyan-400 font-bold">{config.borderWidthPx || 1} px</span>
+                </div>
+                <input
+                  type="range"
+                  min="1"
+                  max="8"
+                  value={config.borderWidthPx || 1}
+                  onChange={(e) => updateConfig('borderWidthPx', parseInt(e.target.value))}
+                  className="w-full accent-cyan-400 h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer"
+                />
+              </div>
+
+              {/* Border Color Selection */}
+              <div className="space-y-1">
+                <div className="flex justify-between items-center text-[11px] text-slate-400">
+                  <span>Border Color</span>
+                  <span className="font-mono text-[10px] text-slate-300">{config.borderColor}</span>
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                  {[
+                    { hex: '#000000', label: 'Black' },
+                    { hex: '#475569', label: 'Dark Gray' },
+                    { hex: '#94a3b8', label: 'Slate' },
+                    { hex: '#ffffff', label: 'White' },
+                    { hex: '#1e3a8a', label: 'Navy' },
+                    { hex: '#b91c1c', label: 'Red' },
+                    { hex: '#f59e0b', label: 'Gold' },
+                  ].map((swatch) => (
+                    <button
+                      key={swatch.hex}
+                      type="button"
+                      onClick={() => updateConfig('borderColor', swatch.hex)}
+                      className={`w-5 h-5 rounded-md border transition-transform active:scale-90 ${
+                        config.borderColor === swatch.hex
+                          ? 'border-cyan-400 ring-2 ring-cyan-400/50 scale-110'
+                          : 'border-slate-600'
+                      }`}
+                      style={{ backgroundColor: swatch.hex }}
+                      title={swatch.label}
+                    />
+                  ))}
+
+                  {/* Custom color input */}
+                  <label
+                    className="w-5 h-5 rounded-md border border-slate-600 cursor-pointer overflow-hidden relative flex items-center justify-center hover:scale-105 transition"
+                    title="Choose Custom Border Color"
+                  >
+                    <input
+                      type="color"
+                      value={config.borderColor || '#000000'}
+                      onChange={(e) => updateConfig('borderColor', e.target.value)}
+                      className="opacity-0 absolute inset-0 cursor-pointer w-full h-full"
+                    />
+                    <span className="text-[9px] font-bold text-slate-300">🎨</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
 
         <label className="flex items-center space-x-2.5 cursor-pointer select-none">
           <input

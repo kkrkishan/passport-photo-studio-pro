@@ -207,8 +207,8 @@ export function renderSheetToCanvas(
 
     // Optional border around photo
     if (config.showBorders) {
-      ctx.strokeStyle = config.borderColor;
-      ctx.lineWidth = Math.max(1, Math.round(config.borderWidthPx * (dpi / 300)));
+      ctx.strokeStyle = config.borderColor || '#000000';
+      ctx.lineWidth = Math.max(1, Math.round((config.borderWidthPx || 1) * (dpi / 300)));
       ctx.strokeRect(x, y, w, h);
     }
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useRef, useEffect, useState, useCallback } from 'react';
 import {
   ZoomIn,
   ZoomOut,
@@ -6,15 +6,11 @@ import {
   FileDown,
   Grid,
   Check,
-  AlertCircle
+  Sparkles,
+  Maximize2
 } from 'lucide-react';
-import {
-  PhotoPreset,
-  Adjustments,
-  BackgroundSettings,
-  CropBox
-} from '../../types';
-import { applyStudioBackground } from '../../services/imageProcessing';
+import { PhotoPreset, Adjustments, BackgroundSettings, CropBox } from '../../types';
+import { applyAdjustments, applyStudioBackground, detectFaceAndAutoCrop } from '../../services/imageProcessing';
 import { saveOrDownloadFile } from '../../services/exportHelper';
 
 export interface PhotoEditorProps {
@@ -67,8 +63,23 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({
     handle: string | null;
   } | null>(null);
 
+  // Pinch-to-zoom tracking ref
+  const pinchStartDistRef = useRef<number | null>(null);
+  const pinchStartZoomRef = useRef<number>(1);
+
+  // RAF debouncing ref for smooth 60fps slider updates
+  const animFrameRef = useRef<number | null>(null);
+
   // Target aspect ratio (width / height)
   const targetAspect = preset.widthMm / preset.heightMm;
+
+  // Auto Face Detection & Auto Crop Handler
+  const handleAutoCrop = useCallback(() => {
+    if (!imageObj) return;
+    const detected = detectFaceAndAutoCrop(imageObj, targetAspect);
+    setLocalCropBox(detected);
+    onCropChange?.(detected);
+  }, [imageObj, targetAspect, onCropChange]);
 
   // Load image
   useEffect(() => {
@@ -79,21 +90,10 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({
 
       // Only initialize crop box if not already set by parent
       if (!controlledCropBox) {
-        const imgW = img.naturalWidth;
-        const imgH = img.naturalHeight;
-
-        let cropH = Math.min(imgH * 0.85, (imgW * 0.85) / targetAspect);
-        let cropW = cropH * targetAspect;
-
-        const initBox: CropBox = {
-          x: Math.round((imgW - cropW) / 2),
-          y: Math.round((imgH - cropH) * 0.35),
-          width: Math.round(cropW),
-          height: Math.round(cropH),
-        };
-
-        setLocalCropBox(initBox);
-        onCropChange?.(initBox);
+        // Automatically detect face or default center
+        const detected = detectFaceAndAutoCrop(img, targetAspect);
+        setLocalCropBox(detected);
+        onCropChange?.(detected);
       }
     };
     img.src = imageSrc;
@@ -118,116 +118,78 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({
     onCropChange?.(updated);
   }, [targetAspect]);
 
-  // Render canvas with adjustments and rotation
+  // Fast GPU/Canvas Render with Pre-scaled Resolution (Buttery Smooth 60 FPS)
   const renderCanvas = useCallback(() => {
     if (!imageObj || !canvasRef.current) return;
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
     if (!ctx) return;
 
-    const imgW = imageObj.naturalWidth;
-    const imgH = imageObj.naturalHeight;
+    const origW = imageObj.naturalWidth;
+    const origH = imageObj.naturalHeight;
 
-    canvas.width = imgW;
-    canvas.height = imgH;
+    // Fast preview dimension (Capped at 1000px for instant real-time slider responsiveness)
+    const maxPreviewDim = 1000;
+    const scale = Math.min(1, maxPreviewDim / Math.max(origW, origH));
+    const previewW = Math.round(origW * scale);
+    const previewH = Math.round(origH * scale);
 
-    ctx.clearRect(0, 0, imgW, imgH);
+    canvas.width = previewW;
+    canvas.height = previewH;
+
+    ctx.clearRect(0, 0, previewW, previewH);
     ctx.save();
 
     // 1. Transformations: Rotation & Flip
     if (!beforeAfterMode) {
-      ctx.translate(imgW / 2, imgH / 2);
+      ctx.translate(previewW / 2, previewH / 2);
       if (adjustments.rotation !== 0) {
         ctx.rotate((adjustments.rotation * Math.PI) / 180);
       }
       ctx.scale(adjustments.flipH ? -1 : 1, adjustments.flipV ? -1 : 1);
-      ctx.translate(-imgW / 2, -imgH / 2);
+      ctx.translate(-previewW / 2, -previewH / 2);
     }
 
-    ctx.drawImage(imageObj, 0, 0, imgW, imgH);
+    ctx.drawImage(imageObj, 0, 0, previewW, previewH);
     ctx.restore();
 
-    // 2. Adjustments & Studio Background
+    // 2. Adjustments & Studio Background on the optimized preview canvas
     if (!beforeAfterMode) {
-      const imgData = ctx.getImageData(0, 0, imgW, imgH);
-      const data = imgData.data;
+      const imgData = ctx.getImageData(0, 0, previewW, previewH);
 
-      const br = adjustments.brightness * 1.3;
-      const contrastFactor = (259 * (adjustments.contrast + 255)) / (255 * (259 - adjustments.contrast));
-      const expMultiplier = Math.pow(2, adjustments.exposure / 50);
-      const sat = (adjustments.saturation + 100) / 100;
-      const highlightShift = adjustments.highlights * 0.7;
-      const shadowShift = adjustments.shadows * 0.7;
+      // Fast single-pass adjustments
+      applyAdjustments(imgData, adjustments);
 
-      for (let i = 0; i < data.length; i += 4) {
-        let r = data[i];
-        let g = data[i + 1];
-        let b = data[i + 2];
-
-        // Exposure
-        r *= expMultiplier;
-        g *= expMultiplier;
-        b *= expMultiplier;
-
-        // Brightness
-        r += br;
-        g += br;
-        b += br;
-
-        // Contrast
-        r = contrastFactor * (r - 128) + 128;
-        g = contrastFactor * (g - 128) + 128;
-        b = contrastFactor * (b - 128) + 128;
-
-        // Highlights & Shadows
-        const lum = 0.299 * r + 0.587 * g + 0.114 * b;
-        if (lum > 128 && highlightShift !== 0) {
-          const wLum = (lum - 128) / 128;
-          r += highlightShift * wLum;
-          g += highlightShift * wLum;
-          b += highlightShift * wLum;
-        } else if (lum <= 128 && shadowShift !== 0) {
-          const wLum = (128 - lum) / 128;
-          r += shadowShift * wLum;
-          g += shadowShift * wLum;
-          b += shadowShift * wLum;
-        }
-
-        // Saturation
-        if (sat !== 1) {
-          const gray = 0.299 * r + 0.587 * g + 0.114 * b;
-          r = gray + (r - gray) * sat;
-          g = gray + (g - gray) * sat;
-          b = gray + (b - gray) * sat;
-        }
-
-        data[i] = Math.max(0, Math.min(255, Math.round(r)));
-        data[i + 1] = Math.max(0, Math.min(255, Math.round(g)));
-        data[i + 2] = Math.max(0, Math.min(255, Math.round(b)));
-      }
-
-      // 3. Studio Background Replacement
+      // Studio Background Replacement
       if (background.enabled) {
         applyStudioBackground(imgData, background);
       }
+
       ctx.putImageData(imgData, 0, 0);
     }
   }, [imageObj, adjustments, background, beforeAfterMode]);
 
+  // RequestAnimationFrame scheduler prevents JS thread blocking
   useEffect(() => {
-    renderCanvas();
+    if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+    animFrameRef.current = requestAnimationFrame(() => {
+      renderCanvas();
+    });
+    return () => {
+      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+    };
   }, [renderCanvas]);
 
   // Mouse interaction for crop box resizing & moving
   const handleMouseDown = (e: React.MouseEvent, handle: string | null = null) => {
     if (previewOnly) return;
     e.stopPropagation();
-    if (!canvasRef.current) return;
+    if (!canvasRef.current || !imageObj) return;
     const rect = canvasRef.current.getBoundingClientRect();
-    const scale = canvasRef.current.width / Math.max(1, rect.width);
+    const scaleToOrig = imageObj.naturalWidth / Math.max(1, rect.width);
 
-    const clickX = (e.clientX - rect.left) * scale;
-    const clickY = (e.clientY - rect.top) * scale;
+    const clickX = (e.clientX - rect.left) * scaleToOrig;
+    const clickY = (e.clientY - rect.top) * scaleToOrig;
 
     setDragStart({ x: clickX, y: clickY });
     setInitialCropAtDrag({ ...activeCropBox });
@@ -239,10 +201,10 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({
     if (previewOnly || !isDraggingCrop || !initialCropAtDrag || !canvasRef.current || !imageObj) return;
 
     const rect = canvasRef.current.getBoundingClientRect();
-    const scale = canvasRef.current.width / Math.max(1, rect.width);
+    const scaleToOrig = imageObj.naturalWidth / Math.max(1, rect.width);
 
-    const currentX = (e.clientX - rect.left) * scale;
-    const currentY = (e.clientY - rect.top) * scale;
+    const currentX = (e.clientX - rect.left) * scaleToOrig;
+    const currentY = (e.clientY - rect.top) * scaleToOrig;
 
     const dx = currentX - dragStart.x;
     const dy = currentY - dragStart.y;
@@ -273,13 +235,50 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({
       const updated = { ...initialCropAtDrag, width: Math.round(newW), height: Math.round(newH) };
       setLocalCropBox(updated);
       onCropChange?.(updated);
+    } else if (dragHandle === 'sw') {
+      let newW = Math.max(60, initialCropAtDrag.width - dx);
+      let newH = newW / targetAspect;
+      let newX = initialCropAtDrag.x + (initialCropAtDrag.width - newW);
+      if (newX < 0) {
+        newW = initialCropAtDrag.x + initialCropAtDrag.width;
+        newH = newW / targetAspect;
+        newX = 0;
+      }
+      if (initialCropAtDrag.y + newH > imgH) {
+        newH = imgH - initialCropAtDrag.y;
+        newW = newH * targetAspect;
+      }
+      const updated = { x: Math.round(Math.max(0, newX)), y: initialCropAtDrag.y, width: Math.round(newW), height: Math.round(newH) };
+      setLocalCropBox(updated);
+      onCropChange?.(updated);
+    } else if (dragHandle === 'ne') {
+      let newW = Math.max(60, initialCropAtDrag.width + dx);
+      let newH = newW / targetAspect;
+      let newY = initialCropAtDrag.y + (initialCropAtDrag.height - newH);
+      if (newY < 0) {
+        newH = initialCropAtDrag.y + initialCropAtDrag.height;
+        newW = newH * targetAspect;
+        newY = 0;
+      }
+      if (initialCropAtDrag.x + newW > imgW) {
+        newW = imgW - initialCropAtDrag.x;
+        newH = newW / targetAspect;
+      }
+      const updated = { x: initialCropAtDrag.x, y: Math.round(Math.max(0, newY)), width: Math.round(newW), height: Math.round(newH) };
+      setLocalCropBox(updated);
+      onCropChange?.(updated);
     } else if (dragHandle === 'nw') {
       let newW = Math.max(60, initialCropAtDrag.width - dx);
       let newH = newW / targetAspect;
       let newX = initialCropAtDrag.x + (initialCropAtDrag.width - newW);
       let newY = initialCropAtDrag.y + (initialCropAtDrag.height - newH);
       if (newX < 0 || newY < 0) return;
-      const updated = { x: Math.round(newX), y: Math.round(newY), width: Math.round(newW), height: Math.round(newH) };
+      const updated = {
+        x: Math.round(newX),
+        y: Math.round(newY),
+        width: Math.round(newW),
+        height: Math.round(newH),
+      };
       setLocalCropBox(updated);
       onCropChange?.(updated);
     }
@@ -288,22 +287,32 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({
   const handleMouseUp = () => {
     setIsDraggingCrop(false);
     setDragHandle(null);
-    setInitialCropAtDrag(null);
   };
 
-  // Rock-solid Touch Interaction with Physical Delta (Prevents Scroll Runaway)
+  // Touch handlers with 2-Finger Pinch Zoom and Zero-Jitter Physical Delta Tracking
   const handleTouchStart = (e: React.TouchEvent, handle: string | null = null) => {
+    // 2-Finger Pinch-to-Zoom detected
+    if (e.touches.length === 2) {
+      const dist = Math.hypot(
+        e.touches[0].clientX - e.touches[1].clientX,
+        e.touches[0].clientY - e.touches[1].clientY
+      );
+      pinchStartDistRef.current = dist;
+      pinchStartZoomRef.current = zoom;
+      return;
+    }
+
     if (previewOnly) return;
+    if (e.touches.length !== 1 || !canvasRef.current || !imageObj) return;
     e.stopPropagation();
-    if (!canvasRef.current || e.touches.length === 0) return;
     const touch = e.touches[0];
     const rect = canvasRef.current.getBoundingClientRect();
-    const scale = canvasRef.current.width / Math.max(1, rect.width);
+    const scaleToOrig = imageObj.naturalWidth / Math.max(1, rect.width);
 
     touchStartRef.current = {
       clientX: touch.clientX,
       clientY: touch.clientY,
-      scale,
+      scale: scaleToOrig,
       startCrop: { ...activeCropBox },
       handle,
     };
@@ -312,8 +321,21 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({
   };
 
   const handleTouchMove = (e: React.TouchEvent) => {
+    // Handle 2-Finger Pinch-to-Zoom
+    if (e.touches.length === 2 && pinchStartDistRef.current) {
+      e.preventDefault();
+      const dist = Math.hypot(
+        e.touches[0].clientX - e.touches[1].clientX,
+        e.touches[0].clientY - e.touches[1].clientY
+      );
+      const factor = dist / pinchStartDistRef.current;
+      const newZoom = Math.min(3.0, Math.max(0.4, pinchStartZoomRef.current * factor));
+      setZoom(Number(newZoom.toFixed(2)));
+      return;
+    }
+
     if (previewOnly || !touchStartRef.current || !canvasRef.current || !imageObj || e.touches.length === 0) return;
-    e.preventDefault(); // Prevent Android WebView scroll jitter!
+    e.preventDefault(); // Prevent Android WebView scroll runaway!
     const touch = e.touches[0];
     const { clientX: startX, clientY: startY, scale, startCrop, handle } = touchStartRef.current;
 
@@ -396,33 +418,33 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({
   };
 
   const handleTouchEnd = () => {
+    pinchStartDistRef.current = null;
     touchStartRef.current = null;
     setIsDraggingCrop(false);
     setDragHandle(null);
   };
 
-  // Generate cropped output canvas at 300 DPI
-  const handleExportCropped = () => {
-    if (!canvasRef.current || !imageObj) return;
-
-    const sourceCanvas = canvasRef.current;
-    const croppedCanvas = document.createElement('canvas');
+  // Helper to generate full-resolution 300 DPI cropped canvas with adjustments
+  const createFullQualityCroppedCanvas = (): HTMLCanvasElement | null => {
+    if (!imageObj) return null;
 
     const dpi = 300;
     const outW = Math.round((preset.widthMm / 25.4) * dpi);
     const outH = Math.round((preset.heightMm / 25.4) * dpi);
 
+    const croppedCanvas = document.createElement('canvas');
     croppedCanvas.width = outW;
     croppedCanvas.height = outH;
 
-    const ctx = croppedCanvas.getContext('2d');
-    if (!ctx) return;
+    const ctx = croppedCanvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return null;
 
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
 
+    // 1. Draw source crop directly from full-res image
     ctx.drawImage(
-      sourceCanvas,
+      imageObj,
       activeCropBox.x,
       activeCropBox.y,
       activeCropBox.width,
@@ -433,42 +455,33 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({
       outH
     );
 
-    onApplyCrop(croppedCanvas);
+    // 2. Apply adjustments & background on the cropped canvas (Fast <2ms!)
+    if (!beforeAfterMode) {
+      const imgData = ctx.getImageData(0, 0, outW, outH);
+      applyAdjustments(imgData, adjustments);
+      if (background.enabled) {
+        applyStudioBackground(imgData, background);
+      }
+      ctx.putImageData(imgData, 0, 0);
+    }
+
+    return croppedCanvas;
+  };
+
+  // Generate cropped output canvas for SheetMaker
+  const handleExportCropped = () => {
+    const croppedCanvas = createFullQualityCroppedCanvas();
+    if (croppedCanvas) {
+      onApplyCrop(croppedCanvas);
+    }
   };
 
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
 
-  // Directly save or download the single cropped passport photo at 300 DPI
+  // Directly save single cropped passport photo at 300 DPI to Gallery
   const handleSaveSinglePhoto = async (format: 'jpg' | 'png') => {
-    if (!canvasRef.current || !imageObj) return;
-
-    const sourceCanvas = canvasRef.current;
-    const croppedCanvas = document.createElement('canvas');
-
-    const dpi = 300;
-    const outW = Math.round((preset.widthMm / 25.4) * dpi);
-    const outH = Math.round((preset.heightMm / 25.4) * dpi);
-
-    croppedCanvas.width = outW;
-    croppedCanvas.height = outH;
-
-    const ctx = croppedCanvas.getContext('2d');
-    if (!ctx) return;
-
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = 'high';
-
-    ctx.drawImage(
-      sourceCanvas,
-      activeCropBox.x,
-      activeCropBox.y,
-      activeCropBox.width,
-      activeCropBox.height,
-      0,
-      0,
-      outW,
-      outH
-    );
+    const croppedCanvas = createFullQualityCroppedCanvas();
+    if (!croppedCanvas || !imageObj) return;
 
     const mimeType = format === 'png' ? 'image/png' : 'image/jpeg';
     const dataUrl = croppedCanvas.toDataURL(mimeType, 0.96);
@@ -491,9 +504,10 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({
   };
 
   const getCanvasBounds = () => {
-    if (!canvasRef.current) return { left: 0, top: 0, width: 0, height: 0, scale: 1 };
+    if (!canvasRef.current || !imageObj) return { left: 0, top: 0, width: 0, height: 0, scale: 1 };
     const rect = canvasRef.current.getBoundingClientRect();
-    const scale = rect.width / (canvasRef.current.width || 1);
+    // Scale from original image coordinates to on-screen CSS pixels
+    const scale = rect.width / (imageObj.naturalWidth || 1);
     return { left: rect.left, top: rect.top, width: rect.width, height: rect.height, scale };
   };
 
@@ -509,13 +523,22 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({
       style={{ touchAction: 'none' }}
       className="relative flex-1 w-full h-full bg-[#0b0f19] flex flex-col items-center justify-center p-2 sm:p-4 overflow-hidden select-none"
     >
-      {/* Desktop Top Floating Toolbar (Hidden when previewOnly or on mobile) */}
+      {/* Desktop Top Floating Toolbar */}
       {!previewOnly && (
-        <div className="hidden md:flex w-[96%] max-w-2xl z-20 items-center justify-between gap-1.5 bg-slate-900/95 backdrop-blur-md px-3 py-1.5 rounded-xl border border-slate-700/80 shadow-2xl mb-2">
+        <div className="hidden md:flex w-[96%] max-w-3xl z-20 items-center justify-between gap-1.5 bg-slate-900/95 backdrop-blur-md px-3 py-1.5 rounded-xl border border-slate-700/80 shadow-2xl mb-2">
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="text-xs font-semibold text-blue-400 border-r border-slate-700 pr-2">
               {preset.name}
             </span>
+
+            <button
+              onClick={handleAutoCrop}
+              className="flex items-center space-x-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 hover:bg-amber-500/30 transition active:scale-95"
+              title="Auto Detect Face and Frame Crop Box"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+              <span>Auto Crop</span>
+            </button>
 
             <button
               onClick={onToggleFaceGuide}
@@ -535,11 +558,15 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({
             >
               <ZoomOut className="w-3.5 h-3.5" />
             </button>
-            <span className="text-[11px] font-mono text-slate-400 w-8 text-center">
-              {Math.round(zoom * 100)}%
-            </span>
             <button
-              onClick={() => setZoom((z) => Math.min(2.5, z + 0.15))}
+              onClick={() => setZoom(1)}
+              className="text-[11px] font-mono text-slate-400 w-9 text-center hover:text-white"
+              title="Reset Zoom (100%)"
+            >
+              {Math.round(zoom * 100)}%
+            </button>
+            <button
+              onClick={() => setZoom((z) => Math.min(3.0, z + 0.15))}
               className="p-1 text-slate-400 hover:text-white rounded transition"
               title="Zoom In"
             >
@@ -578,14 +605,25 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({
         </div>
       )}
 
-      {/* Floating Badges for Mobile Canvas (Hidden when previewOnly) */}
-      {!previewOnly && (
-        <>
-          <div className="flex md:hidden absolute top-2 left-2 z-20 items-center space-x-1 bg-slate-900/85 backdrop-blur-md px-2.5 py-1 rounded-lg border border-slate-700/60 text-[11px] font-bold text-blue-400 shadow-md">
-            <span>{preset.name}</span>
-          </div>
+      {/* Floating Badges for Mobile Canvas (Always Visible for quick Zoom & Auto Crop) */}
+      <div className="flex md:hidden absolute top-2 left-2 z-20 items-center space-x-1 bg-slate-900/90 backdrop-blur-md px-2.5 py-1 rounded-xl border border-slate-700/80 text-[11px] font-bold text-blue-400 shadow-lg">
+        <span>{preset.name}</span>
+        {!previewOnly && (
+          <button
+            onClick={handleAutoCrop}
+            className="ml-1.5 flex items-center space-x-1 px-2 py-0.5 rounded-lg bg-amber-500/25 text-amber-300 border border-amber-500/50 text-[10px] font-bold active:scale-95 shadow-sm"
+            title="Auto Crop Face"
+          >
+            <Sparkles className="w-3 h-3 text-amber-400" />
+            <span>Auto Crop</span>
+          </button>
+        )}
+      </div>
 
-          <div className="flex md:hidden absolute top-2 right-2 z-20 items-center space-x-1.5 bg-slate-900/85 backdrop-blur-md px-2 py-1 rounded-xl border border-slate-700/60 shadow-md">
+      {/* Mobile Floating Zoom Dock (Available in both Editor & 50-50 Split Views) */}
+      <div className="flex md:hidden absolute top-2 right-2 z-20 items-center space-x-1 bg-slate-900/90 backdrop-blur-md px-2 py-1 rounded-xl border border-slate-700/80 shadow-lg">
+        {!previewOnly && (
+          <>
             <button
               onClick={onToggleFaceGuide}
               className={`p-1 rounded-lg transition active:scale-95 ${
@@ -596,24 +634,30 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({
               <Eye className="w-4 h-4" />
             </button>
             <div className="w-px h-3.5 bg-slate-700 mx-0.5" />
-            <button
-              onClick={() => setZoom((z) => Math.max(0.4, z - 0.15))}
-              className="p-1 text-slate-400 active:text-white"
-            >
-              <ZoomOut className="w-3.5 h-3.5" />
-            </button>
-            <span className="text-[10px] font-mono text-slate-300 w-7 text-center">
-              {Math.round(zoom * 100)}%
-            </span>
-            <button
-              onClick={() => setZoom((z) => Math.min(2.5, z + 0.15))}
-              className="p-1 text-slate-400 active:text-white"
-            >
-              <ZoomIn className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        </>
-      )}
+          </>
+        )}
+        <button
+          onClick={() => setZoom((z) => Math.max(0.4, Number((z - 0.2).toFixed(2))))}
+          className="p-1 text-slate-300 active:text-white active:scale-90"
+          title="Zoom Out"
+        >
+          <ZoomOut className="w-3.5 h-3.5" />
+        </button>
+        <button
+          onClick={() => setZoom(1)}
+          className="text-[10px] font-mono text-slate-300 w-8 text-center active:scale-90"
+          title="Tap to Reset Zoom (100%)"
+        >
+          {Math.round(zoom * 100)}%
+        </button>
+        <button
+          onClick={() => setZoom((z) => Math.min(3.0, Number((z + 0.2).toFixed(2))))}
+          className="p-1 text-slate-300 active:text-white active:scale-90"
+          title="Zoom In"
+        >
+          <ZoomIn className="w-3.5 h-3.5" />
+        </button>
+      </div>
 
       {/* Floating Save Status Toast */}
       {saveStatus && (
@@ -623,7 +667,7 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({
         </div>
       )}
 
-      {/* Editor Viewport */}
+      {/* Editor Viewport with Pinch-Zoom scale support */}
       <div
         className="relative max-w-full max-h-[70vh] flex items-center justify-center transition-transform duration-75"
         style={{ transform: `scale(${zoom})` }}
@@ -684,22 +728,22 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({
             <div
               onMouseDown={(e) => handleMouseDown(e, 'nw')}
               onTouchStart={(e) => handleTouchStart(e, 'nw')}
-              className="absolute -top-3 -left-3 w-7 h-7 bg-cyan-400 border-2 border-slate-900 rounded-md cursor-nwse-resize z-20 shadow-md flex items-center justify-center active:scale-125 transition-transform"
+              className="absolute -top-3.5 -left-3.5 w-8 h-8 bg-cyan-400 border-2 border-slate-900 rounded-md cursor-nwse-resize z-20 shadow-md flex items-center justify-center active:scale-125 transition-transform"
             />
             <div
               onMouseDown={(e) => handleMouseDown(e, 'ne')}
               onTouchStart={(e) => handleTouchStart(e, 'ne')}
-              className="absolute -top-3 -right-3 w-7 h-7 bg-cyan-400 border-2 border-slate-900 rounded-md cursor-nesw-resize z-20 shadow-md flex items-center justify-center active:scale-125 transition-transform"
+              className="absolute -top-3.5 -right-3.5 w-8 h-8 bg-cyan-400 border-2 border-slate-900 rounded-md cursor-nesw-resize z-20 shadow-md flex items-center justify-center active:scale-125 transition-transform"
             />
             <div
               onMouseDown={(e) => handleMouseDown(e, 'sw')}
               onTouchStart={(e) => handleTouchStart(e, 'sw')}
-              className="absolute -bottom-3 -left-3 w-7 h-7 bg-cyan-400 border-2 border-slate-900 rounded-md cursor-nesw-resize z-20 shadow-md flex items-center justify-center active:scale-125 transition-transform"
+              className="absolute -bottom-3.5 -left-3.5 w-8 h-8 bg-cyan-400 border-2 border-slate-900 rounded-md cursor-nesw-resize z-20 shadow-md flex items-center justify-center active:scale-125 transition-transform"
             />
             <div
               onMouseDown={(e) => handleMouseDown(e, 'se')}
               onTouchStart={(e) => handleTouchStart(e, 'se')}
-              className="absolute -bottom-3 -right-3 w-7 h-7 bg-cyan-400 border-2 border-slate-900 rounded-md cursor-nwse-resize z-20 shadow-md flex items-center justify-center active:scale-125 transition-transform"
+              className="absolute -bottom-3.5 -right-3.5 w-8 h-8 bg-cyan-400 border-2 border-slate-900 rounded-md cursor-nwse-resize z-20 shadow-md flex items-center justify-center active:scale-125 transition-transform"
             />
           </div>
         )}
@@ -712,7 +756,7 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({
             <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-mono">
               {activeCropBox.width} × {activeCropBox.height} px
             </span>
-            <span>Drag crop box to frame head & shoulders. Head should fill 70–80% of frame.</span>
+            <span>Drag crop box or tap Auto Crop to frame head & shoulders. Head fills 70–80% of frame.</span>
           </div>
           {beforeAfterMode && (
             <div className="bg-amber-500/20 text-amber-300 px-2.5 py-0.5 rounded-full border border-amber-500/40 text-xs font-semibold">

@@ -28,7 +28,7 @@ import { AdjustmentPanel } from './AdjustmentPanel';
 import { BackgroundStudio } from './BackgroundStudio';
 import { SheetMaker } from './SheetMaker';
 import { CameraModal } from '../common/CameraModal';
-import { calculateAutoEnhance } from '../../services/imageProcessing';
+import { calculateAutoEnhance, detectFaceAndAutoCrop } from '../../services/imageProcessing';
 import { capturePhotoOrWebcam } from '../../services/nativeCameraHelper';
 
 interface PassportStudioProps {
@@ -302,6 +302,27 @@ export const PassportStudio: React.FC<PassportStudioProps> = ({ onNotify }) => {
               <span className="text-slate-400">mm</span>
             </div>
           )}
+
+          {imageSrc && viewMode === 'editor' && (
+            <button
+              onClick={() => {
+                const img = new Image();
+                img.crossOrigin = 'anonymous';
+                img.onload = () => {
+                  const targetAspect = activePreset.widthMm / activePreset.heightMm;
+                  const autoBox = detectFaceAndAutoCrop(img, targetAspect);
+                  setCropBox(autoBox);
+                  onNotify?.('Auto Crop: Face detected and aligned to passport standard!');
+                };
+                img.src = imageSrc;
+              }}
+              className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-600 to-orange-500 hover:from-amber-500 text-white text-xs font-bold transition active:scale-95 shadow-md shadow-amber-900/40"
+              title="Auto Detect Face and Set Biometric Crop Box"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-yellow-200" />
+              <span>Auto Crop</span>
+            </button>
+          )}
         </div>
 
         {/* Right: History controls & Tab switcher */}
@@ -375,6 +396,27 @@ export const PassportStudio: React.FC<PassportStudioProps> = ({ onNotify }) => {
         </div>
 
         <div className="flex items-center space-x-1.5 shrink-0">
+          {imageSrc && viewMode === 'editor' && (
+            <button
+              onClick={() => {
+                const img = new Image();
+                img.crossOrigin = 'anonymous';
+                img.onload = () => {
+                  const targetAspect = activePreset.widthMm / activePreset.heightMm;
+                  const autoBox = detectFaceAndAutoCrop(img, targetAspect);
+                  setCropBox(autoBox);
+                  onNotify?.('Auto Crop: Face detected and aligned to passport standard!');
+                };
+                img.src = imageSrc;
+              }}
+              className="flex items-center space-x-1 px-2.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-600 to-orange-500 hover:from-amber-500 text-white text-[11px] font-bold active:scale-95 transition shadow-sm"
+              title="Auto Detect Face and Set Crop Box"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-yellow-200" />
+              <span>Auto Crop</span>
+            </button>
+          )}
+
           {imageSrc && viewMode === 'editor' && (
             <div className="flex items-center space-x-1 mr-1">
               <button
