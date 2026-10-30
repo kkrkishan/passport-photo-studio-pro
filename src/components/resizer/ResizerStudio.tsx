@@ -57,9 +57,31 @@ export const ResizerStudio: React.FC<ResizerStudioProps> = ({ onNotify }) => {
   };
 
   return (
-    <div className="flex-1 flex overflow-hidden bg-[#0b0f19] text-slate-100 select-none">
-      {/* Resizer Left Sidebar Navigation */}
-      <aside className="w-64 bg-slate-900/95 border-r border-slate-800 flex flex-col justify-between p-3 shrink-0">
+    <div className="flex-1 flex flex-col md:flex-row overflow-hidden bg-[#0b0f19] text-slate-100 select-none">
+      {/* Mobile Sub-Navigation Pills (Scrollable) */}
+      <div className="flex md:hidden overflow-x-auto gap-1.5 p-2 bg-slate-900 border-b border-slate-800 shrink-0 no-scrollbar">
+        {navItems.map((item) => {
+          const Icon = item.icon;
+          const isActive = activeTab === item.id;
+          return (
+            <button
+              key={item.id}
+              onClick={() => setActiveTab(item.id as SubTab)}
+              className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition shrink-0 active:scale-95 ${
+                isActive
+                  ? 'bg-amber-600 text-white shadow-md'
+                  : 'bg-slate-800 text-slate-400 hover:text-white'
+              }`}
+            >
+              <Icon className="w-3.5 h-3.5" />
+              <span>{item.label}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Resizer Desktop Left Sidebar Navigation */}
+      <aside className="hidden md:flex w-64 bg-slate-900/95 border-r border-slate-800 flex-col justify-between p-3 shrink-0">
         <div className="space-y-4">
           {/* Header Title inside Resizer */}
           <div className="px-3 pt-2">
@@ -114,14 +136,14 @@ export const ResizerStudio: React.FC<ResizerStudioProps> = ({ onNotify }) => {
       {/* Main Resizer Work Area */}
       <main className="flex-1 flex overflow-hidden bg-gradient-to-b from-[#0b0f19] via-[#0d1424] to-[#0b0f19]">
         {activeTab === 'overview' && (
-          <div className="flex-1 overflow-y-auto p-8 space-y-8 max-w-6xl mx-auto">
+          <div className="flex-1 overflow-y-auto p-4 sm:p-8 space-y-6 sm:space-y-8 max-w-6xl mx-auto">
             {/* Overview Hero Header */}
-            <div className="space-y-2 text-center max-w-3xl mx-auto pt-4">
+            <div className="space-y-2 text-center max-w-3xl mx-auto pt-2 sm:pt-4">
               <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs font-semibold">
                 <Sparkles className="w-3.5 h-3.5" />
                 <span>One-Stop Station for Online Application Documents</span>
               </div>
-              <h2 className="text-3xl font-extrabold text-white">
+              <h2 className="text-xl sm:text-3xl font-extrabold text-white">
                 PHOTO & DOCUMENT RESIZER PRO
               </h2>
               <p className="text-xs text-slate-400 leading-relaxed">

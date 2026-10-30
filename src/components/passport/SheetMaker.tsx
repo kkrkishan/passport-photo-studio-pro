@@ -45,6 +45,7 @@ export const SheetMaker: React.FC<SheetMakerProps> = ({
 }) => {
   const [config, setConfig] = useState<SheetConfig>(initialConfig || DEFAULT_SHEET_CONFIG);
   const [currentPage, setCurrentPage] = useState(0);
+  const [mobileTab, setMobileTab] = useState<'preview' | 'settings'>('preview');
   const [isExporting, setIsExporting] = useState(false);
   const [exportMessage, setExportMessage] = useState<string | null>(null);
 
@@ -161,11 +162,35 @@ export const SheetMaker: React.FC<SheetMakerProps> = ({
   };
 
   return (
-    <div className="flex-1 flex overflow-hidden bg-[#0b0f19] select-none">
+    <div className="flex-1 flex flex-col md:flex-row overflow-hidden bg-[#0b0f19] select-none">
+      {/* Mobile Tab Switcher */}
+      <div className="flex md:hidden border-b border-slate-800 bg-slate-900 p-1.5 gap-2 shrink-0">
+        <button
+          onClick={() => setMobileTab('preview')}
+          className={`flex-1 py-1.5 rounded-lg text-xs font-semibold text-center transition ${
+            mobileTab === 'preview'
+              ? 'bg-blue-600 text-white shadow-md'
+              : 'text-slate-400 bg-slate-800/80 hover:text-white'
+          }`}
+        >
+          Sheet Preview
+        </button>
+        <button
+          onClick={() => setMobileTab('settings')}
+          className={`flex-1 py-1.5 rounded-lg text-xs font-semibold text-center transition ${
+            mobileTab === 'settings'
+              ? 'bg-blue-600 text-white shadow-md'
+              : 'text-slate-400 bg-slate-800/80 hover:text-white'
+          }`}
+        >
+          Paper & Grid Settings
+        </button>
+      </div>
+
       {/* Left Control Sidebar */}
-      <div className="w-84 bg-slate-900 border-r border-slate-800 flex flex-col h-full text-slate-200">
+      <div className={`${mobileTab === 'settings' ? 'flex' : 'hidden'} md:flex w-full md:w-84 bg-slate-900 border-r border-slate-800 flex-col h-full text-slate-200 shrink-0`}>
         {/* Header */}
-        <div className="p-4 border-b border-slate-800 bg-slate-950/40 flex items-center justify-between">
+        <div className="p-3 sm:p-4 border-b border-slate-800 bg-slate-950/40 flex items-center justify-between">
           <div className="flex items-center space-x-2">
             <Grid className="w-4 h-4 text-blue-400" />
             <span className="font-semibold text-sm">Dynamic Sheet Engine</span>
@@ -396,12 +421,12 @@ export const SheetMaker: React.FC<SheetMakerProps> = ({
       </div>
 
       {/* Main Preview & Export Area */}
-      <div className="flex-1 flex flex-col items-center justify-between p-4 overflow-hidden relative">
+      <div className={`${mobileTab === 'preview' ? 'flex' : 'hidden'} md:flex flex-1 flex-col items-center justify-between p-2 sm:p-4 overflow-hidden relative`}>
         {/* Top Export Bar */}
-        <div className="w-full flex items-center justify-between bg-slate-900/90 backdrop-blur-md px-4 py-2.5 rounded-2xl border border-slate-800 shadow-xl mb-3">
-          <div className="flex items-center space-x-3">
+        <div className="w-full flex flex-wrap items-center justify-between gap-2 bg-slate-900/90 backdrop-blur-md px-3 sm:px-4 py-2 rounded-2xl border border-slate-800 shadow-xl mb-3">
+          <div className="flex items-center space-x-2">
             <span className="text-xs font-semibold text-slate-300">
-              Page {currentPage + 1} of {layout.totalPages}
+              Page {currentPage + 1}/{layout.totalPages}
             </span>
             {layout.totalPages > 1 && (
               <div className="flex items-center space-x-1">
@@ -410,49 +435,49 @@ export const SheetMaker: React.FC<SheetMakerProps> = ({
                   onClick={() => setCurrentPage((p) => p - 1)}
                   className="p-1 rounded bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-300"
                 >
-                  <ChevronLeft className="w-4 h-4" />
+                  <ChevronLeft className="w-3.5 h-3.5" />
                 </button>
                 <button
                   disabled={currentPage >= layout.totalPages - 1}
                   onClick={() => setCurrentPage((p) => p + 1)}
                   className="p-1 rounded bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-300"
                 >
-                  <ChevronRight className="w-4 h-4" />
+                  <ChevronRight className="w-3.5 h-3.5" />
                 </button>
               </div>
             )}
           </div>
 
           {/* Action Export Buttons */}
-          <div className="flex items-center space-x-2">
+          <div className="flex flex-wrap items-center gap-1.5 sm:space-x-2">
             <button
               onClick={handlePrint}
-              className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium flex items-center space-x-1.5 transition"
+              className="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium flex items-center space-x-1 transition"
             >
               <Printer className="w-3.5 h-3.5 text-slate-300" />
               <span>Print</span>
             </button>
             <button
               onClick={() => handleExportImage('jpg')}
-              className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium flex items-center space-x-1.5 transition"
+              className="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium flex items-center space-x-1 transition"
             >
               <FileDown className="w-3.5 h-3.5 text-blue-400" />
               <span>JPG</span>
             </button>
             <button
               onClick={() => handleExportImage('png')}
-              className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium flex items-center space-x-1.5 transition"
+              className="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium flex items-center space-x-1 transition"
             >
               <FileDown className="w-3.5 h-3.5 text-cyan-400" />
-              <span>PNG (300 DPI)</span>
+              <span>PNG</span>
             </button>
             <button
               onClick={handleExportPDF}
               disabled={isExporting}
-              className="px-4 py-1.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-bold flex items-center space-x-1.5 shadow-lg shadow-blue-900/40 transition"
+              className="px-3 sm:px-4 py-1.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-bold flex items-center space-x-1.5 shadow-lg shadow-blue-900/40 transition"
             >
               <FileDown className="w-4 h-4" />
-              <span>{isExporting ? 'Generating...' : 'Export Print-Ready PDF'}</span>
+              <span>{isExporting ? 'Exporting...' : 'Export PDF'}</span>
             </button>
           </div>
         </div>

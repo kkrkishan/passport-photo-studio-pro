@@ -69,18 +69,18 @@ export const TitleBar: React.FC<TitleBarProps> = ({
   return (
     <header className="h-10 bg-slate-900 border-b border-slate-800 flex items-center justify-between px-3 select-none z-50 text-xs text-slate-300 relative" style={{ WebkitAppRegion: 'drag' } as any}>
       {/* Left: App Logo, Name & Menu bar */}
-      <div className="flex items-center space-x-3" style={{ WebkitAppRegion: 'no-drag' } as any}>
-        <div className="flex items-center space-x-2 font-bold tracking-wider text-blue-400">
+      <div className="flex items-center space-x-2 min-w-0" style={{ WebkitAppRegion: 'no-drag' } as any}>
+        <div className="flex items-center space-x-2 font-bold tracking-wider text-blue-400 shrink-0">
           <div className="w-6 h-6 rounded bg-gradient-to-tr from-blue-600 to-cyan-500 flex items-center justify-center text-white shadow-md">
             <Camera className="w-3.5 h-3.5" />
           </div>
-          <span className="text-sm font-black bg-gradient-to-r from-blue-400 via-indigo-300 to-cyan-400 bg-clip-text text-transparent">
+          <span className="text-xs sm:text-sm font-black bg-gradient-to-r from-blue-400 via-indigo-300 to-cyan-400 bg-clip-text text-transparent truncate max-w-[190px] sm:max-w-none">
             PASSPORT PHOTO STUDIO PRO
           </span>
         </div>
 
-        {/* Desktop Menu Bar */}
-        <div className="flex items-center space-x-1 pl-2">
+        {/* Desktop Menu Bar (Hidden on Mobile) */}
+        <div className="hidden md:flex items-center space-x-1 pl-2">
           {/* File Menu */}
           <div className="relative">
             <button

@@ -35,6 +35,7 @@ export const DocumentEnhancer: React.FC<DocumentEnhancerProps> = ({
     exposure: 0,
   });
   const [beforeAfterMode, setBeforeAfterMode] = useState(false);
+  const [mobileTab, setMobileTab] = useState<'preview' | 'filters'>('preview');
 
   // Load image
   useEffect(() => {
@@ -74,46 +75,70 @@ export const DocumentEnhancer: React.FC<DocumentEnhancerProps> = ({
   };
 
   return (
-    <div className="flex-1 flex overflow-hidden bg-[#0b0f19] select-none text-slate-200">
+    <div className="flex-1 flex flex-col md:flex-row overflow-hidden bg-[#0b0f19] select-none text-slate-200">
+      {/* Mobile Tab Switcher */}
+      <div className="flex md:hidden border-b border-slate-800 bg-slate-900 p-1.5 gap-2 shrink-0">
+        <button
+          onClick={() => setMobileTab('preview')}
+          className={`flex-1 py-1.5 rounded-lg text-xs font-semibold text-center transition ${
+            mobileTab === 'preview'
+              ? 'bg-emerald-600 text-white shadow-md'
+              : 'text-slate-400 bg-slate-800/80 hover:text-white'
+          }`}
+        >
+          Document Preview
+        </button>
+        <button
+          onClick={() => setMobileTab('filters')}
+          className={`flex-1 py-1.5 rounded-lg text-xs font-semibold text-center transition ${
+            mobileTab === 'filters'
+              ? 'bg-emerald-600 text-white shadow-md'
+              : 'text-slate-400 bg-slate-800/80 hover:text-white'
+          }`}
+        >
+          Filters & Tuning
+        </button>
+      </div>
+
       {/* Center Image Viewport */}
-      <div className="flex-1 flex flex-col items-center justify-between p-4 overflow-hidden relative">
+      <div className={`${mobileTab === 'preview' ? 'flex' : 'hidden'} md:flex flex-1 flex-col items-center justify-between p-2 sm:p-4 overflow-hidden relative`}>
         {/* Top Floating Bar */}
-        <div className="w-full flex items-center justify-between bg-slate-900/90 backdrop-blur-md px-4 py-2.5 rounded-2xl border border-slate-800 shadow-xl mb-3">
+        <div className="w-full flex flex-wrap items-center justify-between gap-2 bg-slate-900/90 backdrop-blur-md px-3 sm:px-4 py-2 sm:py-2.5 rounded-2xl border border-slate-800 shadow-xl mb-3">
           <div className="flex items-center space-x-2">
             <span className="text-xs font-bold text-emerald-400 bg-emerald-950/60 px-2.5 py-1 rounded-lg border border-emerald-800/40">
               {slotLabel}
             </span>
-            <span className="text-xs text-slate-400">Document Enhancement & Readability Tuning</span>
+            <span className="text-xs text-slate-400 hidden sm:inline">Enhancement & Tuning</span>
           </div>
 
-          <div className="flex items-center space-x-2">
+          <div className="flex flex-wrap items-center gap-1.5 sm:space-x-2">
             <button
               onClick={() => setBeforeAfterMode(!beforeAfterMode)}
-              className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition ${
+              className={`px-2.5 py-1.5 rounded-xl text-xs font-semibold border transition ${
                 beforeAfterMode
                   ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
                   : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
               }`}
             >
-              <span className="flex items-center space-x-1.5">
+              <span className="flex items-center space-x-1">
                 <Eye className="w-3.5 h-3.5" />
-                <span>{beforeAfterMode ? 'Viewing Raw' : 'Compare Original'}</span>
+                <span>{beforeAfterMode ? 'Raw' : 'Original'}</span>
               </span>
             </button>
 
             <button
               onClick={onBackToCorner}
-              className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs transition"
+              className="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs transition"
             >
-              Adjust Corners
+              Corners
             </button>
 
             <button
               onClick={handleConfirm}
-              className="px-4 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white rounded-xl text-xs font-bold shadow-lg shadow-emerald-900/40 flex items-center space-x-1.5 transition"
+              className="px-3 sm:px-4 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white rounded-xl text-xs font-bold shadow-lg shadow-emerald-900/40 flex items-center space-x-1.5 transition"
             >
               <Check className="w-4 h-4" />
-              <span>Apply & Save {slotLabel}</span>
+              <span>Apply & Save</span>
             </button>
           </div>
         </div>
@@ -122,18 +147,18 @@ export const DocumentEnhancer: React.FC<DocumentEnhancerProps> = ({
         <div className="flex-1 w-full flex items-center justify-center p-2 overflow-auto">
           <canvas
             ref={canvasRef}
-            className="max-h-[72vh] max-w-[80vw] object-contain rounded-xl shadow-2xl border border-slate-700/80 bg-white"
+            className="max-h-[66vh] max-w-[92vw] object-contain rounded-xl shadow-2xl border border-slate-700/80 bg-white"
           />
         </div>
 
         {/* Footer info */}
-        <div className="text-[11px] text-slate-400 pt-2">
-          High-contrast readability engine cleans shadows and reinforces micro-text and security features.
+        <div className="text-[11px] text-slate-400 pt-2 text-center">
+          High-contrast readability engine cleans shadows & reinforces micro-text.
         </div>
       </div>
 
       {/* Right Adjustment Sidebar */}
-      <div className="w-80 bg-slate-900 border-l border-slate-800 flex flex-col h-full">
+      <div className={`${mobileTab === 'filters' ? 'flex' : 'hidden'} md:flex w-full md:w-80 bg-slate-900 border-l border-slate-800 flex-col h-full shrink-0`}>
         {/* Header */}
         <div className="p-4 border-b border-slate-800 bg-slate-950/40 flex items-center justify-between">
           <div className="flex items-center space-x-2">

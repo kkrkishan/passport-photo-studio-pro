@@ -54,6 +54,7 @@ export const PassportStudio: React.FC<PassportStudioProps> = ({ onNotify }) => {
   const [beforeAfterMode, setBeforeAfterMode] = useState(false);
   const [croppedCanvas, setCroppedCanvas] = useState<HTMLCanvasElement | null>(null);
   const [viewMode, setViewMode] = useState<'editor' | 'sheet'>('editor');
+  const [mobileTab, setMobileTab] = useState<'editor' | 'tuning' | 'bg'>('editor');
   const [isCameraOpen, setIsCameraOpen] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -183,12 +184,12 @@ export const PassportStudio: React.FC<PassportStudioProps> = ({ onNotify }) => {
       />
 
       {/* Top Action Bar */}
-      <div className="h-12 border-b border-slate-800 bg-slate-900/60 px-4 flex items-center justify-between">
+      <div className="min-h-12 border-b border-slate-800 bg-slate-900/60 px-3 sm:px-4 py-2 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 shrink-0">
         {/* Left: Input Buttons & Presets */}
-        <div className="flex items-center space-x-2.5">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={handleOpenFile}
-            className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-medium text-slate-200 transition"
+            className="flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-medium text-slate-200 transition active:scale-95"
           >
             <Upload className="w-3.5 h-3.5 text-blue-400" />
             <span>Open Photo</span>
@@ -196,13 +197,13 @@ export const PassportStudio: React.FC<PassportStudioProps> = ({ onNotify }) => {
 
           <button
             onClick={() => setIsCameraOpen(true)}
-            className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-medium text-slate-200 transition"
+            className="flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-medium text-slate-200 transition active:scale-95"
           >
             <Camera className="w-3.5 h-3.5 text-cyan-400" />
-            <span>Webcam Capture</span>
+            <span>Camera</span>
           </button>
 
-          <div className="h-4 border-r border-slate-700 mx-1" />
+          <div className="hidden sm:block h-4 border-r border-slate-700 mx-1" />
 
           {/* Size Presets Dropdown */}
           <div className="flex items-center space-x-1.5 text-xs">
@@ -213,7 +214,7 @@ export const PassportStudio: React.FC<PassportStudioProps> = ({ onNotify }) => {
                 const found = OFFICIAL_PASSPORT_PRESETS.find(p => p.id === e.target.value);
                 if (found) handleSelectPreset(found);
               }}
-              className="bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className="bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:ring-1 focus:ring-blue-500 max-w-[180px] sm:max-w-none truncate"
             >
               {OFFICIAL_PASSPORT_PRESETS.map((p) => (
                 <option key={p.id} value={p.id}>
@@ -354,31 +355,73 @@ export const PassportStudio: React.FC<PassportStudioProps> = ({ onNotify }) => {
         </div>
       ) : viewMode === 'editor' ? (
         // Active Editing Mode
-        <div className="flex-1 flex overflow-hidden">
-          <PhotoEditor
-            imageSrc={imageSrc}
-            preset={activePreset}
-            adjustments={adjustments}
-            background={background}
-            showFaceGuide={showFaceGuide}
-            onToggleFaceGuide={() => setShowFaceGuide(!showFaceGuide)}
-            onApplyCrop={handleApplyCrop}
-            beforeAfterMode={beforeAfterMode}
-          />
+        <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
+          {/* Mobile View Switcher */}
+          <div className="flex md:hidden border-b border-slate-800 bg-slate-900 p-1.5 gap-1 shrink-0">
+            <button
+              onClick={() => setMobileTab('editor')}
+              className={`flex-1 py-1.5 rounded-lg text-xs font-semibold text-center transition ${
+                mobileTab === 'editor'
+                  ? 'bg-blue-600 text-white shadow-md'
+                  : 'text-slate-400 bg-slate-800/80 hover:text-white'
+              }`}
+            >
+              Photo & Crop
+            </button>
+            <button
+              onClick={() => setMobileTab('tuning')}
+              className={`flex-1 py-1.5 rounded-lg text-xs font-semibold text-center transition ${
+                mobileTab === 'tuning'
+                  ? 'bg-blue-600 text-white shadow-md'
+                  : 'text-slate-400 bg-slate-800/80 hover:text-white'
+              }`}
+            >
+              Fine Tuning
+            </button>
+            <button
+              onClick={() => setMobileTab('bg')}
+              className={`flex-1 py-1.5 rounded-lg text-xs font-semibold text-center transition ${
+                mobileTab === 'bg'
+                  ? 'bg-blue-600 text-white shadow-md'
+                  : 'text-slate-400 bg-slate-800/80 hover:text-white'
+              }`}
+            >
+              Background
+            </button>
+          </div>
 
-          <div className="flex flex-col h-full">
-            <AdjustmentPanel
+          {/* Photo Editor Canvas & Crop Engine */}
+          <div className={`${mobileTab === 'editor' ? 'flex' : 'hidden'} md:flex flex-1 flex-col overflow-hidden`}>
+            <PhotoEditor
+              imageSrc={imageSrc}
+              preset={activePreset}
               adjustments={adjustments}
-              onChange={pushAdjustmentState}
-              onAutoEnhance={handleAutoEnhance}
-              onReset={handleResetAdjustments}
+              background={background}
+              showFaceGuide={showFaceGuide}
+              onToggleFaceGuide={() => setShowFaceGuide(!showFaceGuide)}
+              onApplyCrop={handleApplyCrop}
               beforeAfterMode={beforeAfterMode}
-              onToggleBeforeAfter={() => setBeforeAfterMode(!beforeAfterMode)}
             />
-            <BackgroundStudio
-              settings={background}
-              onChange={setBackground}
-            />
+          </div>
+
+          {/* Side Adjustments & Background Studio */}
+          <div className={`${mobileTab !== 'editor' ? 'flex' : 'hidden'} md:flex flex-col h-full w-full md:w-80 overflow-y-auto shrink-0 border-l border-slate-800`}>
+            <div className={`${mobileTab === 'tuning' ? 'block' : 'hidden'} md:block`}>
+              <AdjustmentPanel
+                adjustments={adjustments}
+                onChange={pushAdjustmentState}
+                onAutoEnhance={handleAutoEnhance}
+                onReset={handleResetAdjustments}
+                beforeAfterMode={beforeAfterMode}
+                onToggleBeforeAfter={() => setBeforeAfterMode(!beforeAfterMode)}
+              />
+            </div>
+            <div className={`${mobileTab === 'bg' ? 'block' : 'hidden'} md:block`}>
+              <BackgroundStudio
+                settings={background}
+                onChange={setBackground}
+              />
+            </div>
           </div>
         </div>
       ) : (

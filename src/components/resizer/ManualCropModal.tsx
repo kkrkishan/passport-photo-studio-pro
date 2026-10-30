@@ -57,6 +57,7 @@ export const ManualCropModal: React.FC<ManualCropModalProps> = ({
   // Viewport / zoom
   const [zoom, setZoom] = useState<number>(1);
   const [displayScale, setDisplayScale] = useState<number>(1);
+  const [mobileTab, setMobileTab] = useState<'crop' | 'settings'>('crop');
 
   // Drag interaction state
   const [isDragging, setIsDragging] = useState<boolean>(false);
@@ -263,16 +264,43 @@ export const ManualCropModal: React.FC<ManualCropModalProps> = ({
     setActiveHandle(null);
   }, []);
 
+  // Touch start handler
+  const handleTouchStart = (e: React.TouchEvent, handle: string) => {
+    e.stopPropagation();
+    if (e.touches.length === 0) return;
+    setIsDragging(true);
+    setActiveHandle(handle);
+    dragStartRef.current = {
+      clientX: e.touches[0].clientX,
+      clientY: e.touches[0].clientY,
+      initialCrop: { ...crop },
+    };
+  };
+
+  const handleTouchMove = useCallback((e: TouchEvent) => {
+    if (e.touches.length > 0) {
+      handleMouseMove({ clientX: e.touches[0].clientX, clientY: e.touches[0].clientY } as any);
+    }
+  }, [handleMouseMove]);
+
+  const handleTouchEnd = useCallback(() => {
+    handleMouseUp();
+  }, [handleMouseUp]);
+
   useEffect(() => {
     if (isDragging) {
       window.addEventListener('mousemove', handleMouseMove);
       window.addEventListener('mouseup', handleMouseUp);
+      window.addEventListener('touchmove', handleTouchMove, { passive: false });
+      window.addEventListener('touchend', handleTouchEnd);
     }
     return () => {
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
+      window.removeEventListener('touchmove', handleTouchMove);
+      window.removeEventListener('touchend', handleTouchEnd);
     };
-  }, [isDragging, handleMouseMove, handleMouseUp]);
+  }, [isDragging, handleMouseMove, handleMouseUp, handleTouchMove, handleTouchEnd]);
 
   // Apply Crop
   const handleApply = () => {
@@ -342,12 +370,37 @@ export const ManualCropModal: React.FC<ManualCropModalProps> = ({
           </div>
         </div>
 
+        {/* Mobile View Switcher */}
+        <div className="flex md:hidden border-b border-slate-800 bg-slate-900 p-1.5 gap-2 shrink-0">
+          <button
+            onClick={() => setMobileTab('crop')}
+            className={`flex-1 py-1.5 rounded-lg text-xs font-semibold text-center transition ${
+              mobileTab === 'crop'
+                ? 'bg-blue-600 text-white shadow-md'
+                : 'text-slate-400 bg-slate-800/80 hover:text-white'
+            }`}
+          >
+            Crop Viewport
+          </button>
+          <button
+            onClick={() => setMobileTab('settings')}
+            className={`flex-1 py-1.5 rounded-lg text-xs font-semibold text-center transition ${
+              mobileTab === 'settings'
+                ? 'bg-blue-600 text-white shadow-md'
+                : 'text-slate-400 bg-slate-800/80 hover:text-white'
+            }`}
+          >
+            Aspect Ratio & Size
+          </button>
+        </div>
+
         {/* Modal Workspace */}
-        <div className="flex-1 flex overflow-hidden">
+        <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
           {/* Main Visual Crop Viewport */}
           <div
             ref={containerRef}
-            className="flex-1 bg-[#070a13] relative overflow-hidden flex items-center justify-center p-6"
+            style={{ touchAction: 'none' }}
+            className={`${mobileTab === 'crop' ? 'flex' : 'hidden'} md:flex flex-1 bg-[#070a13] relative overflow-hidden items-center justify-center p-3 sm:p-6`}
           >
             <div
               className="relative inline-block"
@@ -363,7 +416,7 @@ export const ManualCropModal: React.FC<ManualCropModalProps> = ({
                 src={imageDataUrl}
                 alt="Crop Target"
                 onLoad={updateDisplayScale}
-                className="max-h-[60vh] max-w-[60vw] object-contain block pointer-events-none shadow-2xl"
+                className="max-h-[55vh] sm:max-h-[60vh] max-w-[85vw] sm:max-w-[60vw] object-contain block pointer-events-none shadow-2xl"
               />
 
               {/* Darkened Mask Over Entire Image with Transparent Hole for Crop */}
@@ -394,9 +447,11 @@ export const ManualCropModal: React.FC<ManualCropModalProps> = ({
                   top: `${screenCropTop}px`,
                   width: `${screenCropWidth}px`,
                   height: `${screenCropHeight}px`,
+                  touchAction: 'none',
                 }}
                 className="border-2 border-blue-400 cursor-move shadow-[0_0_12px_rgba(59,130,246,0.6)]"
                 onMouseDown={(e) => handleMouseDown(e, 'move')}
+                onTouchStart={(e) => handleTouchStart(e, 'move')}
               >
                 {/* Rule of Thirds Grid Lines */}
                 <div className="absolute inset-0 grid grid-cols-3 grid-rows-3 pointer-events-none opacity-30">
@@ -411,40 +466,48 @@ export const ManualCropModal: React.FC<ManualCropModalProps> = ({
                   <div />
                 </div>
 
-                {/* 4 Corner Handles */}
+                {/* 4 Corner Handles with enlarged touch targets */}
                 <div
                   onMouseDown={(e) => handleMouseDown(e, 'nw')}
-                  className="absolute -top-1.5 -left-1.5 w-3.5 h-3.5 bg-blue-500 border border-white rounded-sm cursor-nwse-resize shadow-md"
+                  onTouchStart={(e) => handleTouchStart(e, 'nw')}
+                  className="absolute -top-2.5 -left-2.5 w-5 h-5 bg-blue-500 border border-white rounded-sm cursor-nwse-resize shadow-md"
                 />
                 <div
                   onMouseDown={(e) => handleMouseDown(e, 'ne')}
-                  className="absolute -top-1.5 -right-1.5 w-3.5 h-3.5 bg-blue-500 border border-white rounded-sm cursor-nesw-resize shadow-md"
+                  onTouchStart={(e) => handleTouchStart(e, 'ne')}
+                  className="absolute -top-2.5 -right-2.5 w-5 h-5 bg-blue-500 border border-white rounded-sm cursor-nesw-resize shadow-md"
                 />
                 <div
                   onMouseDown={(e) => handleMouseDown(e, 'sw')}
-                  className="absolute -bottom-1.5 -left-1.5 w-3.5 h-3.5 bg-blue-500 border border-white rounded-sm cursor-nesw-resize shadow-md"
+                  onTouchStart={(e) => handleTouchStart(e, 'sw')}
+                  className="absolute -bottom-2.5 -left-2.5 w-5 h-5 bg-blue-500 border border-white rounded-sm cursor-nesw-resize shadow-md"
                 />
                 <div
                   onMouseDown={(e) => handleMouseDown(e, 'se')}
-                  className="absolute -bottom-1.5 -right-1.5 w-3.5 h-3.5 bg-blue-500 border border-white rounded-sm cursor-nwse-resize shadow-md"
+                  onTouchStart={(e) => handleTouchStart(e, 'se')}
+                  className="absolute -bottom-2.5 -right-2.5 w-5 h-5 bg-blue-500 border border-white rounded-sm cursor-nwse-resize shadow-md"
                 />
 
                 {/* 4 Edge Handles */}
                 <div
                   onMouseDown={(e) => handleMouseDown(e, 'n')}
-                  className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-4 h-2 bg-white border border-blue-500 rounded-sm cursor-ns-resize shadow-sm"
+                  onTouchStart={(e) => handleTouchStart(e, 'n')}
+                  className="absolute -top-2 left-1/2 -translate-x-1/2 w-6 h-3 bg-white border border-blue-500 rounded-sm cursor-ns-resize shadow-sm"
                 />
                 <div
                   onMouseDown={(e) => handleMouseDown(e, 's')}
-                  className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-4 h-2 bg-white border border-blue-500 rounded-sm cursor-ns-resize shadow-sm"
+                  onTouchStart={(e) => handleTouchStart(e, 's')}
+                  className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-6 h-3 bg-white border border-blue-500 rounded-sm cursor-ns-resize shadow-sm"
                 />
                 <div
                   onMouseDown={(e) => handleMouseDown(e, 'w')}
-                  className="absolute top-1/2 -translate-y-1/2 -left-1.5 w-2 h-4 bg-white border border-blue-500 rounded-sm cursor-ew-resize shadow-sm"
+                  onTouchStart={(e) => handleTouchStart(e, 'w')}
+                  className="absolute top-1/2 -translate-y-1/2 -left-2 w-3 h-6 bg-white border border-blue-500 rounded-sm cursor-ew-resize shadow-sm"
                 />
                 <div
                   onMouseDown={(e) => handleMouseDown(e, 'e')}
-                  className="absolute top-1/2 -translate-y-1/2 -right-1.5 w-2 h-4 bg-white border border-blue-500 rounded-sm cursor-ew-resize shadow-sm"
+                  onTouchStart={(e) => handleTouchStart(e, 'e')}
+                  className="absolute top-1/2 -translate-y-1/2 -right-2 w-3 h-6 bg-white border border-blue-500 rounded-sm cursor-ew-resize shadow-sm"
                 />
 
                 {/* Dimension Badge inside box */}
@@ -455,7 +518,7 @@ export const ManualCropModal: React.FC<ManualCropModalProps> = ({
             </div>
 
             {/* Floating Zoom Bar */}
-            <div className="absolute bottom-4 left-6 flex items-center space-x-1 bg-slate-900/90 border border-slate-700 rounded-xl px-2 py-1 shadow-xl">
+            <div className="absolute bottom-4 left-4 sm:left-6 flex items-center space-x-1 bg-slate-900/90 border border-slate-700 rounded-xl px-2 py-1 shadow-xl">
               <button
                 onClick={() => setZoom((z) => Math.max(0.5, z - 0.1))}
                 className="p-1 hover:bg-slate-800 rounded text-slate-300 hover:text-white"
@@ -463,7 +526,7 @@ export const ManualCropModal: React.FC<ManualCropModalProps> = ({
               >
                 <ZoomOut className="w-3.5 h-3.5" />
               </button>
-              <span className="text-[11px] font-mono font-bold text-slate-300 w-12 text-center">
+              <span className="text-[11px] font-mono font-bold text-slate-300 w-10 text-center">
                 {Math.round(zoom * 100)}%
               </span>
               <button
@@ -484,7 +547,7 @@ export const ManualCropModal: React.FC<ManualCropModalProps> = ({
           </div>
 
           {/* Right Sidebar: Aspect Ratio & Controls */}
-          <div className="w-72 bg-slate-950 border-l border-slate-800 p-5 flex flex-col justify-between shrink-0 space-y-4">
+          <div className={`${mobileTab === 'settings' ? 'flex' : 'hidden'} md:flex w-full md:w-72 bg-slate-950 border-l border-slate-800 p-4 sm:p-5 flex-col justify-between shrink-0 space-y-4 overflow-y-auto`}>
             <div className="space-y-5">
               {/* Aspect Ratio Presets */}
               <div className="space-y-2.5">

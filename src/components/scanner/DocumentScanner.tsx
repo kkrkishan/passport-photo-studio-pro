@@ -258,11 +258,11 @@ export const DocumentScanner: React.FC = () => {
         mode="document"
       />
 
-      {/* Top Bar */}
-      <div className="h-12 border-b border-slate-800 bg-slate-900/60 px-4 flex items-center justify-between">
-        <div className="flex items-center space-x-3">
+      {/* Top Bar - Responsive layout */}
+      <div className="min-h-12 border-b border-slate-800 bg-slate-900/60 px-3 sm:px-4 py-2 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <div className="flex items-center space-x-1.5 text-xs">
-            <span className="text-slate-400 font-medium">Document Type:</span>
+            <span className="text-slate-400 font-medium">Doc:</span>
             <select
               value={selectedDocType}
               onChange={(e) => setSelectedDocType(e.target.value as DocumentType)}
@@ -276,26 +276,26 @@ export const DocumentScanner: React.FC = () => {
             </select>
           </div>
 
-          <div className="h-4 border-r border-slate-700" />
+          <div className="hidden sm:block h-4 border-r border-slate-700" />
 
           <div className="text-xs text-slate-400">
-            Current Set: <span className="font-semibold text-emerald-400">{activeSet.name}</span>
+            Set: <span className="font-semibold text-emerald-400">{activeSet.name}</span>
           </div>
         </div>
 
         {/* Action: Create A4 Sheet button */}
         <button
           onClick={() => setViewMode('a4')}
-          className="flex items-center space-x-2 px-4 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white rounded-xl text-xs font-bold shadow-lg shadow-emerald-900/40 transition"
+          className="w-full sm:w-auto flex items-center justify-center space-x-2 px-3 sm:px-4 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white rounded-xl text-xs font-bold shadow-lg shadow-emerald-900/40 transition active:scale-95"
         >
-          <Layout className="w-4 h-4" />
-          <span>CREATE A4 SHEET (FRONT + BACK)</span>
+          <Layout className="w-4 h-4 shrink-0" />
+          <span className="truncate">CREATE A4 SHEET (FRONT + BACK)</span>
         </button>
       </div>
 
       {/* Dual Slot Cards Workspace */}
-      <div className="flex-1 overflow-y-auto p-6 flex flex-col items-center justify-center">
-        <div className="w-full max-w-4xl grid grid-cols-2 gap-8">
+      <div className="flex-1 overflow-y-auto p-3 sm:p-6 flex flex-col items-center">
+        <div className="w-full max-w-4xl grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
           {/* FRONT SIDE SLOT CARD */}
           <SlotCard
             label="FRONT SIDE"
@@ -392,7 +392,7 @@ const SlotCard: React.FC<SlotCardProps> = ({
   const displayImage = slotData.enhancedImage || slotData.rectifiedImage || slotData.rawImage;
 
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 shadow-2xl flex flex-col justify-between h-[420px] transition hover:border-slate-700">
+    <div className="bg-slate-900 border border-slate-800 rounded-3xl p-4 sm:p-5 shadow-2xl flex flex-col justify-between min-h-[340px] md:h-[420px] transition hover:border-slate-700">
       {/* Slot Header */}
       <div className="flex items-center justify-between pb-3 border-b border-slate-800/80">
         <div className="flex items-center space-x-2">
@@ -418,7 +418,7 @@ const SlotCard: React.FC<SlotCardProps> = ({
       </div>
 
       {/* Main Preview / Empty Box */}
-      <div className="flex-1 my-4 rounded-2xl bg-slate-950/80 border border-dashed border-slate-800 flex items-center justify-center overflow-hidden relative group">
+      <div className="flex-1 my-3 rounded-2xl bg-slate-950/80 border border-dashed border-slate-800 flex items-center justify-center overflow-hidden relative group min-h-[160px]">
         {displayImage ? (
           <img
             src={displayImage}
@@ -426,13 +426,13 @@ const SlotCard: React.FC<SlotCardProps> = ({
             className="w-full h-full object-contain p-2 rounded-xl"
           />
         ) : (
-          <div className="text-center p-6 space-y-3">
-            <div className="w-12 h-12 rounded-2xl bg-emerald-600/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center mx-auto">
-              <FileText className="w-6 h-6" />
+          <div className="text-center p-4 sm:p-6 space-y-2 sm:space-y-3">
+            <div className="w-10 sm:w-12 h-10 sm:h-12 rounded-2xl bg-emerald-600/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center mx-auto">
+              <FileText className="w-5 sm:w-6 h-5 sm:h-6" />
             </div>
             <div className="text-xs font-semibold text-slate-300">No {label} Loaded</div>
             <div className="text-[11px] text-slate-500 max-w-xs">
-              Upload from computer or capture directly from desktop camera
+              Upload photo or capture directly with camera
             </div>
           </div>
         )}
@@ -445,14 +445,14 @@ const SlotCard: React.FC<SlotCardProps> = ({
             <div className="grid grid-cols-2 gap-2">
               <button
                 onClick={onEditCorners}
-                className="py-1.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium flex items-center justify-center space-x-1.5 transition"
+                className="py-1.5 px-2 sm:px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium flex items-center justify-center space-x-1.5 transition active:scale-95"
               >
                 <Crop className="w-3.5 h-3.5 text-cyan-400" />
                 <span>Adjust Corners</span>
               </button>
               <button
                 onClick={onEnhance}
-                className="py-1.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium flex items-center justify-center space-x-1.5 transition"
+                className="py-1.5 px-2 sm:px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium flex items-center justify-center space-x-1.5 transition active:scale-95"
               >
                 <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
                 <span>Enhance Filters</span>
@@ -461,7 +461,7 @@ const SlotCard: React.FC<SlotCardProps> = ({
             <div className="grid grid-cols-2 gap-2">
               <button
                 onClick={() => onSave?.('jpg')}
-                className="py-1.5 px-3 rounded-xl bg-slate-800/80 hover:bg-slate-750 text-slate-300 border border-slate-700 hover:border-slate-600 text-xs font-medium flex items-center justify-center space-x-1.5 transition"
+                className="py-1.5 px-2 sm:px-3 rounded-xl bg-slate-800/80 hover:bg-slate-750 text-slate-300 border border-slate-700 hover:border-slate-600 text-xs font-medium flex items-center justify-center space-x-1.5 transition"
                 title="Save Single Card as JPG"
               >
                 <FileDown className="w-3.5 h-3.5 text-blue-400" />
@@ -469,7 +469,7 @@ const SlotCard: React.FC<SlotCardProps> = ({
               </button>
               <button
                 onClick={() => onSave?.('png')}
-                className="py-1.5 px-3 rounded-xl bg-slate-800/80 hover:bg-slate-750 text-slate-300 border border-slate-700 hover:border-slate-600 text-xs font-medium flex items-center justify-center space-x-1.5 transition"
+                className="py-1.5 px-2 sm:px-3 rounded-xl bg-slate-800/80 hover:bg-slate-750 text-slate-300 border border-slate-700 hover:border-slate-600 text-xs font-medium flex items-center justify-center space-x-1.5 transition"
                 title="Save Single Card as PNG"
               >
                 <FileDown className="w-3.5 h-3.5 text-cyan-400" />
@@ -478,20 +478,20 @@ const SlotCard: React.FC<SlotCardProps> = ({
             </div>
           </>
         ) : (
-          <div className="grid grid-cols-2 gap-2.5">
+          <div className="grid grid-cols-2 gap-2 sm:gap-2.5">
             <button
               onClick={onOpen}
-              className="py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold flex items-center justify-center space-x-2 transition"
+              className="py-2.5 px-2 sm:px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold flex items-center justify-center space-x-1.5 sm:space-x-2 transition active:scale-95"
             >
-              <Upload className="w-3.5 h-3.5 text-blue-400" />
+              <Upload className="w-3.5 h-3.5 text-blue-400 shrink-0" />
               <span>Upload Photo</span>
             </button>
             <button
               onClick={onCapture}
-              className="py-2.5 px-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white text-xs font-semibold flex items-center justify-center space-x-2 shadow-lg shadow-emerald-900/30 transition"
+              className="py-2.5 px-2 sm:px-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white text-xs font-semibold flex items-center justify-center space-x-1.5 sm:space-x-2 shadow-lg shadow-emerald-900/30 transition active:scale-95"
             >
-              <Camera className="w-3.5 h-3.5" />
-              <span>Webcam Capture</span>
+              <Camera className="w-3.5 h-3.5 shrink-0" />
+              <span>Camera Snap</span>
             </button>
           </div>
         )}

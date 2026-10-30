@@ -295,11 +295,11 @@ export const PhotoCompressorView: React.FC<PhotoCompressorViewProps> = ({ initia
   return (
     <div className="flex-1 flex flex-col p-6 overflow-y-auto space-y-6">
       {/* Top Banner */}
-      <div className="flex items-center justify-between pb-4 border-b border-slate-800">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-800">
         <div>
-          <h2 className="text-xl font-black text-white flex items-center space-x-2">
+          <h2 className="text-lg sm:text-xl font-black text-white flex items-center space-x-2">
             <Minimize2 className="w-5 h-5 text-emerald-400" />
-            <span>Photo Compressor (Target KB & 0–100% Quality Slider)</span>
+            <span>Photo Compressor (Target KB & Quality Slider)</span>
           </h2>
           <p className="text-xs text-slate-400 mt-0.5">
             Strict target KB limits for government exams or manual 0–100% compression slider with verified disk export.
@@ -307,7 +307,7 @@ export const PhotoCompressorView: React.FC<PhotoCompressorViewProps> = ({ initia
         </div>
 
         {workingDataUrl && (
-          <div className="flex items-center space-x-2">
+          <div className="flex flex-wrap items-center gap-2">
             {/* MANUAL CROP BUTTON (FEATURE 3) */}
             <button
               onClick={() => setIsCropModalOpen(true)}

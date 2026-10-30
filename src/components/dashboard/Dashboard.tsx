@@ -9,28 +9,28 @@ interface DashboardProps {
 
 export const Dashboard: React.FC<DashboardProps> = ({ onSelectModule, onOpenImage }) => {
   return (
-    <div className="flex-1 overflow-y-auto bg-gradient-to-b from-[#0b0f19] via-[#0f172a] to-[#0b0f19] p-8 flex flex-col items-center justify-center select-none text-slate-100">
-      <div className="max-w-4xl w-full text-center space-y-4 mb-8">
+    <div className="flex-1 overflow-y-auto bg-gradient-to-b from-[#0b0f19] via-[#0f172a] to-[#0b0f19] p-4 sm:p-8 flex flex-col items-center justify-start sm:justify-center select-none text-slate-100">
+      <div className="max-w-4xl w-full text-center space-y-3 sm:space-y-4 mb-6 sm:mb-8 pt-2">
         <div className="inline-flex items-center space-x-2 px-3 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-semibold">
           <Sparkles className="w-3.5 h-3.5" />
-          <span>Professional Windows Desktop Suite • Offline-First</span>
+          <span>Professional All-in-One Studio • 100% Offline</span>
         </div>
 
-        <h1 className="text-4xl font-extrabold tracking-tight bg-gradient-to-r from-blue-400 via-indigo-200 to-cyan-400 bg-clip-text text-transparent">
+        <h1 className="text-2xl sm:text-4xl font-extrabold tracking-tight bg-gradient-to-r from-blue-400 via-indigo-200 to-cyan-400 bg-clip-text text-transparent">
           PASSPORT PHOTO STUDIO PRO
         </h1>
 
-        <p className="text-slate-400 text-sm max-w-2xl mx-auto leading-relaxed">
-          The comprehensive Windows workstation for biometric passport photo creation, intelligent document perspective scanning, and target KB online form photo & document resizing.
+        <p className="text-slate-400 text-xs sm:text-sm max-w-2xl mx-auto leading-relaxed">
+          The comprehensive mobile & desktop workstation for biometric passport photo creation, intelligent document perspective scanning, and target KB recruitment photo & document resizing.
         </p>
       </div>
 
       {/* The Three Main Modules Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl w-full">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 sm:gap-6 max-w-6xl w-full">
         {/* MODULE 1: PASSPORT PHOTO STUDIO */}
         <div
           onClick={() => onSelectModule('passport')}
-          className="group relative bg-slate-900/80 hover:bg-slate-850 border border-slate-800 hover:border-blue-500/60 rounded-3xl p-7 cursor-pointer transition-all duration-300 shadow-2xl hover:shadow-blue-900/30 flex flex-col justify-between"
+          className="group relative bg-slate-900/80 hover:bg-slate-850 border border-slate-800 hover:border-blue-500/60 rounded-3xl p-5 sm:p-7 cursor-pointer transition-all duration-300 shadow-2xl hover:shadow-blue-900/30 flex flex-col justify-between"
         >
           <div className="space-y-4">
             <div className="w-13 h-13 w-12 h-12 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center text-white shadow-xl shadow-blue-900/40 group-hover:scale-105 transition-transform duration-300">

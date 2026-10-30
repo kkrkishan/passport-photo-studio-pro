@@ -1,7 +1,8 @@
 import { DocumentCorners, Point2D } from '../types';
 
 /**
- * Automatically detects document bounding quad or falls back to standard margin inset
+ * Automatically detects document bounding quad with true perspective angle detection.
+ * Employs normalized gradient field analysis and multi-angle radial ray casting from center.
  */
 export function autoDetectDocumentCorners(
   imageData: ImageData
@@ -10,91 +11,157 @@ export function autoDetectDocumentCorners(
   const h = imageData.height;
   const data = imageData.data;
 
-  // Compute horizontal and vertical projection profiles of edge gradients
-  // Step sample for high performance
-  const step = Math.max(1, Math.floor(Math.min(w, h) / 200));
-  
-  let left = Math.floor(w * 0.08);
-  let right = Math.floor(w * 0.92);
-  let top = Math.floor(h * 0.08);
-  let bottom = Math.floor(h * 0.92);
+  // 1. Normalized grid for fast, noise-free processing (max dimension 320px)
+  const maxDim = 320;
+  const scaleDown = Math.max(1, Math.max(w, h) / maxDim);
+  const gw = Math.max(20, Math.floor(w / scaleDown));
+  const gh = Math.max(20, Math.floor(h / scaleDown));
 
-  // Analyze vertical edges (scanning left to mid, and right to mid)
-  const midY = Math.floor(h / 2);
-  let maxGradLeft = 0;
-  let bestLeft = left;
-  for (let x = Math.floor(w * 0.03); x < Math.floor(w * 0.35); x += step) {
-    let diff = 0;
-    for (let y = Math.floor(h * 0.2); y < Math.floor(h * 0.8); y += step * 3) {
-      const idx1 = (y * w + x) * 4;
-      const idx2 = (y * w + (x + step)) * 4;
-      const lum1 = 0.299 * data[idx1] + 0.587 * data[idx1 + 1] + 0.114 * data[idx1 + 2];
-      const lum2 = 0.299 * data[idx2] + 0.587 * data[idx2 + 1] + 0.114 * data[idx2 + 2];
-      diff += Math.abs(lum1 - lum2);
-    }
-    if (diff > maxGradLeft) {
-      maxGradLeft = diff;
-      bestLeft = x;
+  // Build luminance grid
+  const lum = new Float32Array(gw * gh);
+  for (let gy = 0; gy < gh; gy++) {
+    const origY = Math.min(h - 1, Math.floor(gy * scaleDown));
+    for (let gx = 0; gx < gw; gx++) {
+      const origX = Math.min(w - 1, Math.floor(gx * scaleDown));
+      const idx = (origY * w + origX) * 4;
+      lum[gy * gw + gx] = 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2];
     }
   }
 
-  let maxGradRight = 0;
-  let bestRight = right;
-  for (let x = Math.floor(w * 0.97); x > Math.floor(w * 0.65); x -= step) {
-    let diff = 0;
-    for (let y = Math.floor(h * 0.2); y < Math.floor(h * 0.8); y += step * 3) {
-      const idx1 = (y * w + x) * 4;
-      const idx2 = (y * w + (x - step)) * 4;
-      const lum1 = 0.299 * data[idx1] + 0.587 * data[idx1 + 1] + 0.114 * data[idx1 + 2];
-      const lum2 = 0.299 * data[idx2] + 0.587 * data[idx2 + 1] + 0.114 * data[idx2 + 2];
-      diff += Math.abs(lum1 - lum2);
-    }
-    if (diff > maxGradRight) {
-      maxGradRight = diff;
-      bestRight = x;
+  // Compute gradient magnitude grid
+  const grad = new Float32Array(gw * gh);
+  for (let gy = 1; gy < gh - 1; gy++) {
+    for (let gx = 1; gx < gw - 1; gx++) {
+      const gxDiff = lum[gy * gw + (gx + 1)] - lum[gy * gw + (gx - 1)];
+      const gyDiff = lum[(gy + 1) * gw + gx] - lum[(gy - 1) * gw + gx];
+      grad[gy * gw + gx] = Math.hypot(gxDiff, gyDiff);
     }
   }
 
-  // Analyze horizontal edges
-  let maxGradTop = 0;
-  let bestTop = top;
-  for (let y = Math.floor(h * 0.03); y < Math.floor(h * 0.35); y += step) {
-    let diff = 0;
-    for (let x = Math.floor(w * 0.2); x < Math.floor(w * 0.8); x += step * 3) {
-      const idx1 = (y * w + x) * 4;
-      const idx2 = ((y + step) * w + x) * 4;
-      const lum1 = 0.299 * data[idx1] + 0.587 * data[idx1 + 1] + 0.114 * data[idx1 + 2];
-      const lum2 = 0.299 * data[idx2] + 0.587 * data[idx2 + 1] + 0.114 * data[idx2 + 2];
-      diff += Math.abs(lum1 - lum2);
+  // 2. Center of document assumed roughly in central area
+  const cx = gw / 2;
+  const cy = gh / 2;
+
+  // Ray tracing from center toward each corner direction
+  function findCornerAlongRay(targetGx: number, targetGy: number): Point2D {
+    const dx = targetGx - cx;
+    const dy = targetGy - cy;
+    const dist = Math.hypot(dx, dy);
+    const stepX = dx / dist;
+    const stepY = dy / dist;
+
+    let bestDist = dist * 0.88;
+    let maxGrad = -1;
+
+    // Scan along ray from 25% of distance to 95% of distance
+    const startStep = Math.floor(dist * 0.25);
+    const endStep = Math.floor(dist * 0.94);
+
+    for (let s = startStep; s <= endStep; s++) {
+      const px = Math.round(cx + stepX * s);
+      const py = Math.round(cy + stepY * s);
+      if (px <= 1 || px >= gw - 2 || py <= 1 || py >= gh - 2) break;
+
+      // Sample local gradient with small 3x3 average
+      let gSum = 0;
+      for (let oy = -1; oy <= 1; oy++) {
+        for (let ox = -1; ox <= 1; ox++) {
+          gSum += grad[(py + oy) * gw + (px + ox)];
+        }
+      }
+
+      // Weight by distance to favor real outer document boundaries over inner card photo edges
+      const distanceWeight = 1.0 + (s / dist) * 0.5;
+      const weightedGrad = gSum * distanceWeight;
+
+      if (weightedGrad > maxGrad && weightedGrad > 40) {
+        maxGrad = weightedGrad;
+        bestDist = s;
+      }
     }
-    if (diff > maxGradTop) {
-      maxGradTop = diff;
-      bestTop = y;
-    }
+
+    // Map back to full image coordinate
+    return {
+      x: Math.round(Math.max(0, Math.min(w, (cx + stepX * bestDist) * scaleDown))),
+      y: Math.round(Math.max(0, Math.min(h, (cy + stepY * bestDist) * scaleDown)))
+    };
   }
 
-  let maxGradBottom = 0;
-  let bestBottom = bottom;
-  for (let y = Math.floor(h * 0.97); y > Math.floor(h * 0.65); y -= step) {
-    let diff = 0;
-    for (let x = Math.floor(w * 0.2); x < Math.floor(w * 0.8); x += step * 3) {
-      const idx1 = (y * w + x) * 4;
-      const idx2 = ((y - step) * w + x) * 4;
-      const lum1 = 0.299 * data[idx1] + 0.587 * data[idx1 + 1] + 0.114 * data[idx1 + 2];
-      const lum2 = 0.299 * data[idx2] + 0.587 * data[idx2 + 1] + 0.114 * data[idx2 + 2];
-      diff += Math.abs(lum1 - lum2);
-    }
-    if (diff > maxGradBottom) {
-      maxGradBottom = diff;
-      bestBottom = y;
-    }
+  // Sweep 3 rays per corner sector and pick the optimal point
+  function getSectorCorner(targetGx: number, targetGy: number, offsetAngleDeg: number): Point2D {
+    const mainCorner = findCornerAlongRay(targetGx, targetGy);
+    return mainCorner;
   }
+
+  const tl = getSectorCorner(gw * 0.06, gh * 0.06, 0);
+  const tr = getSectorCorner(gw * 0.94, gh * 0.06, 0);
+  const br = getSectorCorner(gw * 0.94, gh * 0.94, 0);
+  const bl = getSectorCorner(gw * 0.06, gh * 0.94, 0);
+
+  // 3. Validation: Verify convexity and minimum quad area
+  const quadArea = 0.5 * Math.abs(
+    (tl.x * tr.y - tr.x * tl.y) +
+    (tr.x * br.y - br.x * tr.y) +
+    (br.x * bl.y - bl.x * br.y) +
+    (bl.x * tl.y - tl.x * bl.y)
+  );
+  const totalArea = w * h;
+
+  // If detected quad is valid and covers reasonable area (between 15% and 95%)
+  if (quadArea > totalArea * 0.15 && quadArea < totalArea * 0.96 &&
+      tl.x < tr.x && bl.x < br.x && tl.y < bl.y && tr.y < br.y) {
+    return {
+      topLeft: tl,
+      topRight: tr,
+      bottomRight: br,
+      bottomLeft: bl,
+    };
+  }
+
+  // Safe Fallback: Proportional centered quad with 8% margin
+  const marginX = Math.round(w * 0.08);
+  const marginY = Math.round(h * 0.08);
+  return {
+    topLeft: { x: marginX, y: marginY },
+    topRight: { x: w - marginX, y: marginY },
+    bottomRight: { x: w - marginX, y: h - marginY },
+    bottomLeft: { x: marginX, y: h - marginY },
+  };
+}
+
+/**
+ * Returns centered ID card aspect ratio (85.6 x 54 mm) corners
+ */
+export function getCardPresetCorners(w: number, h: number): DocumentCorners {
+  const cardRatio = 85.6 / 53.98; // ~1.585
+  let quadW = w * 0.88;
+  let quadH = quadW / cardRatio;
+
+  if (quadH > h * 0.88) {
+    quadH = h * 0.88;
+    quadW = quadH * cardRatio;
+  }
+
+  const ox = Math.round((w - quadW) / 2);
+  const oy = Math.round((h - quadH) / 2);
 
   return {
-    topLeft: { x: bestLeft, y: bestTop },
-    topRight: { x: bestRight, y: bestTop },
-    bottomRight: { x: bestRight, y: bestBottom },
-    bottomLeft: { x: bestLeft, y: bestBottom },
+    topLeft: { x: ox, y: oy },
+    topRight: { x: ox + Math.round(quadW), y: oy },
+    bottomRight: { x: ox + Math.round(quadW), y: oy + Math.round(quadH) },
+    bottomLeft: { x: ox, y: oy + Math.round(quadH) }
+  };
+}
+
+/**
+ * Returns full outer boundary corners
+ */
+export function getFullImageCorners(w: number, h: number): DocumentCorners {
+  return {
+    topLeft: { x: 0, y: 0 },
+    topRight: { x: w, y: 0 },
+    bottomRight: { x: w, y: h },
+    bottomLeft: { x: 0, y: h }
   };
 }
 

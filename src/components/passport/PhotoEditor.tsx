@@ -240,6 +240,94 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({
     setInitialCropAtDrag(null);
   };
 
+  // Touch interaction for mobile crop box resizing & moving
+  const handleTouchStart = (e: React.TouchEvent, handle: string | null = null) => {
+    e.stopPropagation();
+    if (!canvasRef.current || e.touches.length === 0) return;
+    const touch = e.touches[0];
+    const rect = canvasRef.current.getBoundingClientRect();
+    const scale = canvasRef.current.width / rect.width;
+
+    const clickX = (touch.clientX - rect.left) * scale;
+    const clickY = (touch.clientY - rect.top) * scale;
+
+    setDragStart({ x: clickX, y: clickY });
+    setInitialCropAtDrag({ ...cropBox });
+    setDragHandle(handle);
+    setIsDraggingCrop(true);
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!isDraggingCrop || !initialCropAtDrag || !canvasRef.current || !imageObj || e.touches.length === 0) return;
+    const touch = e.touches[0];
+    const rect = canvasRef.current.getBoundingClientRect();
+    const scale = canvasRef.current.width / rect.width;
+
+    const currentX = (touch.clientX - rect.left) * scale;
+    const currentY = (touch.clientY - rect.top) * scale;
+
+    const dx = currentX - dragStart.x;
+    const dy = currentY - dragStart.y;
+
+    const imgW = imageObj.naturalWidth;
+    const imgH = imageObj.naturalHeight;
+
+    if (dragHandle === 'move') {
+      let newX = initialCropAtDrag.x + dx;
+      let newY = initialCropAtDrag.y + dy;
+
+      newX = Math.max(0, Math.min(imgW - initialCropAtDrag.width, newX));
+      newY = Math.max(0, Math.min(imgH - initialCropAtDrag.height, newY));
+
+      const updated = { ...initialCropAtDrag, x: Math.round(newX), y: Math.round(newY) };
+      setCropBox(updated);
+      onCropChange?.(updated);
+    } else if (dragHandle === 'se') {
+      let newW = Math.max(80, initialCropAtDrag.width + dx);
+      let newH = newW / targetAspect;
+
+      if (initialCropAtDrag.x + newW > imgW) {
+        newW = imgW - initialCropAtDrag.x;
+        newH = newW / targetAspect;
+      }
+      if (initialCropAtDrag.y + newH > imgH) {
+        newH = imgH - initialCropAtDrag.y;
+        newW = newH * targetAspect;
+      }
+
+      const updated = {
+        ...initialCropAtDrag,
+        width: Math.round(newW),
+        height: Math.round(newH),
+      };
+      setCropBox(updated);
+      onCropChange?.(updated);
+    } else if (dragHandle === 'nw') {
+      let newW = Math.max(80, initialCropAtDrag.width - dx);
+      let newH = newW / targetAspect;
+
+      let newX = initialCropAtDrag.x + (initialCropAtDrag.width - newW);
+      let newY = initialCropAtDrag.y + (initialCropAtDrag.height - newH);
+
+      if (newX < 0 || newY < 0) return;
+
+      const updated = {
+        x: Math.round(newX),
+        y: Math.round(newY),
+        width: Math.round(newW),
+        height: Math.round(newH),
+      };
+      setCropBox(updated);
+      onCropChange?.(updated);
+    }
+  };
+
+  const handleTouchEnd = () => {
+    setIsDraggingCrop(false);
+    setDragHandle(null);
+    setInitialCropAtDrag(null);
+  };
+
   // Generate cropped output canvas
   const handleExportCropped = () => {
     if (!canvasRef.current || !imageObj) return;
@@ -345,83 +433,76 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({
       ref={containerRef}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
-      className="relative flex-1 bg-[#0b0f19] flex flex-col items-center justify-center p-4 overflow-hidden select-none"
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+      style={{ touchAction: 'none' }}
+      className="relative flex-1 bg-[#0b0f19] flex flex-col items-center justify-center p-2 sm:p-4 overflow-hidden select-none"
     >
-      {/* Top Floating Toolbar */}
-      <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 flex items-center space-x-2 bg-slate-900/90 backdrop-blur-md px-3 py-1.5 rounded-xl border border-slate-700/80 shadow-2xl">
-        <span className="text-xs font-semibold text-blue-400 border-r border-slate-700 pr-2">
-          {preset.name}
-        </span>
+      {/* Top Floating Toolbar - Responsive for Mobile */}
+      <div className="w-[96%] max-w-2xl z-20 flex flex-wrap items-center justify-between gap-1.5 bg-slate-900/95 backdrop-blur-md px-3 py-1.5 rounded-xl border border-slate-700/80 shadow-2xl mb-2">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-xs font-semibold text-blue-400 border-r border-slate-700 pr-2">
+            {preset.name}
+          </span>
 
-        <button
-          onClick={onToggleFaceGuide}
-          className={`flex items-center space-x-1 px-2.5 py-1 rounded-lg text-xs transition ${
-            showFaceGuide ? 'bg-cyan-600/30 text-cyan-300 border border-cyan-500/50' : 'text-slate-400 hover:bg-slate-800'
-          }`}
-          title="Toggle Biometric Face Alignment Guides"
-        >
-          <Eye className="w-3.5 h-3.5" />
-          <span>Face Guide</span>
-        </button>
+          <button
+            onClick={onToggleFaceGuide}
+            className={`flex items-center space-x-1 px-2 py-1 rounded-lg text-xs transition active:scale-95 ${
+              showFaceGuide ? 'bg-cyan-600/30 text-cyan-300 border border-cyan-500/50' : 'text-slate-400 hover:bg-slate-800'
+            }`}
+            title="Toggle Biometric Face Alignment Guides"
+          >
+            <Eye className="w-3.5 h-3.5" />
+            <span className="hidden xs:inline">Face Guide</span>
+          </button>
 
-        <div className="h-4 border-r border-slate-700" />
+          <button
+            onClick={() => setZoom((z) => Math.max(0.4, z - 0.15))}
+            className="p-1 text-slate-400 hover:text-white rounded transition"
+            title="Zoom Out"
+          >
+            <ZoomOut className="w-3.5 h-3.5" />
+          </button>
+          <span className="text-[11px] font-mono text-slate-400 w-8 text-center">
+            {Math.round(zoom * 100)}%
+          </span>
+          <button
+            onClick={() => setZoom((z) => Math.min(2.5, z + 0.15))}
+            className="p-1 text-slate-400 hover:text-white rounded transition"
+            title="Zoom In"
+          >
+            <ZoomIn className="w-3.5 h-3.5" />
+          </button>
+        </div>
 
-        <button
-          onClick={() => setZoom((z) => Math.max(0.4, z - 0.15))}
-          className="p-1 text-slate-400 hover:text-white hover:bg-slate-800 rounded transition"
-          title="Zoom Out"
-        >
-          <ZoomOut className="w-3.5 h-3.5" />
-        </button>
-        <span className="text-[11px] font-mono text-slate-400 w-10 text-center">
-          {Math.round(zoom * 100)}%
-        </span>
-        <button
-          onClick={() => setZoom((z) => Math.min(2.5, z + 0.15))}
-          className="p-1 text-slate-400 hover:text-white hover:bg-slate-800 rounded transition"
-          title="Zoom In"
-        >
-          <ZoomIn className="w-3.5 h-3.5" />
-        </button>
-        <button
-          onClick={() => setZoom(1)}
-          className="p-1 text-slate-400 hover:text-white hover:bg-slate-800 rounded transition"
-          title="Reset Zoom"
-        >
-          <Maximize2 className="w-3.5 h-3.5" />
-        </button>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <button
+            onClick={() => handleSaveSinglePhoto('jpg')}
+            className="flex items-center space-x-1 px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-medium border border-slate-700 transition"
+            title="Save Single Edited Passport Photo (JPG)"
+          >
+            <FileDown className="w-3.5 h-3.5 text-blue-400" />
+            <span>JPG</span>
+          </button>
 
-        <div className="h-4 border-r border-slate-700" />
+          <button
+            onClick={() => handleSaveSinglePhoto('png')}
+            className="flex items-center space-x-1 px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-medium border border-slate-700 transition"
+            title="Save Single Edited Passport Photo (PNG)"
+          >
+            <FileDown className="w-3.5 h-3.5 text-cyan-400" />
+            <span>PNG</span>
+          </button>
 
-        {/* Save Single Photo Buttons */}
-        <button
-          onClick={() => handleSaveSinglePhoto('jpg')}
-          className="flex items-center space-x-1.5 px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-medium border border-slate-700 transition"
-          title="Save Single Edited Passport Photo (JPG)"
-        >
-          <FileDown className="w-3.5 h-3.5 text-blue-400" />
-          <span>Save JPG</span>
-        </button>
-
-        <button
-          onClick={() => handleSaveSinglePhoto('png')}
-          className="flex items-center space-x-1.5 px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-medium border border-slate-700 transition"
-          title="Save Single Edited Passport Photo (PNG)"
-        >
-          <FileDown className="w-3.5 h-3.5 text-cyan-400" />
-          <span>Save PNG</span>
-        </button>
-
-        <div className="h-4 border-r border-slate-700" />
-
-        <button
-          onClick={handleExportCropped}
-          className="flex items-center space-x-1.5 px-3 py-1 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-lg text-xs font-semibold shadow-md shadow-blue-900/40 transition"
-          title="Create Multi-Photo Print Sheet (4x6 or A4)"
-        >
-          <Grid className="w-3.5 h-3.5" />
-          <span>Make Print Sheet</span>
-        </button>
+          <button
+            onClick={handleExportCropped}
+            className="flex items-center space-x-1 px-2.5 py-1 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-lg text-xs font-semibold shadow-md shadow-blue-900/40 transition active:scale-95"
+            title="Create Multi-Photo Print Sheet (4x6 or A4)"
+          >
+            <Grid className="w-3.5 h-3.5" />
+            <span>Sheet Maker</span>
+          </button>
+        </div>
       </div>
 
       {/* Floating Save Status Toast */}
@@ -434,12 +515,12 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({
 
       {/* Editor Viewport */}
       <div
-        className="relative max-w-full max-h-[75vh] flex items-center justify-center transition-transform duration-75"
+        className="relative max-w-full max-h-[70vh] flex items-center justify-center transition-transform duration-75"
         style={{ transform: `scale(${zoom})` }}
       >
         <canvas
           ref={canvasRef}
-          className="max-h-[70vh] max-w-[80vw] object-contain rounded-lg shadow-2xl border border-slate-800 pointer-events-none"
+          className="max-h-[66vh] max-w-[88vw] object-contain rounded-lg shadow-2xl border border-slate-800 pointer-events-none"
         />
 
         {/* Interactive Crop Box Overlay */}
@@ -453,6 +534,7 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({
               height: `${cropBox.height * bounds.scale}px`,
             }}
             onMouseDown={(e) => handleMouseDown(e, 'move')}
+            onTouchStart={(e) => handleTouchStart(e, 'move')}
             className="cursor-move border-2 border-cyan-400 shadow-[0_0_0_9999px_rgba(11,15,25,0.78)] z-10 box-border group"
           >
             {/* Rule of thirds grid lines */}
@@ -493,14 +575,16 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({
               </div>
             )}
 
-            {/* Corner Resize Handles */}
+            {/* Corner Resize Handles with enlarged touch targets */}
             <div
               onMouseDown={(e) => handleMouseDown(e, 'nw')}
-              className="absolute -top-1.5 -left-1.5 w-4 h-4 bg-cyan-400 border-2 border-slate-900 rounded-sm cursor-nwse-resize z-20 shadow-md"
+              onTouchStart={(e) => handleTouchStart(e, 'nw')}
+              className="absolute -top-2.5 -left-2.5 w-6 h-6 bg-cyan-400 border-2 border-slate-900 rounded-sm cursor-nwse-resize z-20 shadow-md flex items-center justify-center"
             />
             <div
               onMouseDown={(e) => handleMouseDown(e, 'se')}
-              className="absolute -bottom-1.5 -right-1.5 w-4 h-4 bg-cyan-400 border-2 border-slate-900 rounded-sm cursor-nwse-resize z-20 shadow-md"
+              onTouchStart={(e) => handleTouchStart(e, 'se')}
+              className="absolute -bottom-2.5 -right-2.5 w-6 h-6 bg-cyan-400 border-2 border-slate-900 rounded-sm cursor-nwse-resize z-20 shadow-md flex items-center justify-center"
             />
           </div>
         )}

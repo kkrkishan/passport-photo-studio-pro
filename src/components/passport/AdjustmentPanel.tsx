@@ -37,7 +37,7 @@ export const AdjustmentPanel: React.FC<AdjustmentPanelProps> = ({
   };
 
   return (
-    <div className="w-80 bg-slate-900 border-l border-slate-800 flex flex-col h-full select-none text-slate-200">
+    <div className="w-full md:w-80 bg-slate-900 border-l border-slate-800 flex flex-col h-full select-none text-slate-200">
       {/* Header */}
       <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/40">
         <div className="flex items-center space-x-2">

@@ -4,15 +4,17 @@ import {
   RotateCcw,
   Maximize2,
   Check,
+  CreditCard,
   ZoomIn,
   ZoomOut,
-  Crosshair,
-  Sparkles,
-  ArrowRight
+  ArrowRight,
+  X
 } from 'lucide-react';
 import { DocumentCorners, Point2D } from '../../types';
 import {
   autoDetectDocumentCorners,
+  getCardPresetCorners,
+  getFullImageCorners,
   warpPerspective
 } from '../../services/perspectiveTransform';
 
@@ -57,7 +59,6 @@ export const CornerAdjuster: React.FC<CornerAdjusterProps> = ({
       if (initialCorners) {
         setCorners(initialCorners);
       } else {
-        // Run auto boundary detection
         const tempCanvas = document.createElement('canvas');
         tempCanvas.width = img.naturalWidth;
         tempCanvas.height = img.naturalHeight;
@@ -86,12 +87,12 @@ export const CornerAdjuster: React.FC<CornerAdjusterProps> = ({
     canvas.width = w;
     canvas.height = h;
 
-    // Draw base image
+    // Base image
     ctx.drawImage(imageObj, 0, 0, w, h);
 
     // Darken exterior polygon
     ctx.save();
-    ctx.fillStyle = 'rgba(11, 15, 25, 0.45)';
+    ctx.fillStyle = 'rgba(11, 15, 25, 0.5)';
     ctx.fillRect(0, 0, w, h);
 
     // Cut out document area
@@ -121,7 +122,7 @@ export const CornerAdjuster: React.FC<CornerAdjusterProps> = ({
     // Draw luminous polygon boundary edges
     ctx.save();
     ctx.strokeStyle = '#10b981'; // Emerald
-    ctx.lineWidth = Math.max(2, Math.round(w / 400));
+    ctx.lineWidth = Math.max(3, Math.round(w / 350));
     ctx.beginPath();
     ctx.moveTo(corners.topLeft.x, corners.topLeft.y);
     ctx.lineTo(corners.topRight.x, corners.topRight.y);
@@ -131,7 +132,7 @@ export const CornerAdjuster: React.FC<CornerAdjusterProps> = ({
     ctx.stroke();
 
     // Draw Corner Pins
-    const pinRadius = Math.max(8, Math.round(w / 70));
+    const pinRadius = Math.max(12, Math.round(w / 60));
     const pinKeys: (keyof DocumentCorners)[] = ['topLeft', 'topRight', 'bottomRight', 'bottomLeft'];
 
     for (const key of pinKeys) {
@@ -140,8 +141,8 @@ export const CornerAdjuster: React.FC<CornerAdjusterProps> = ({
 
       // Glow halo
       ctx.beginPath();
-      ctx.arc(pt.x, pt.y, pinRadius * 1.6, 0, 2 * Math.PI);
-      ctx.fillStyle = isSelected ? 'rgba(6, 182, 212, 0.4)' : 'rgba(16, 185, 129, 0.3)';
+      ctx.arc(pt.x, pt.y, pinRadius * 1.8, 0, 2 * Math.PI);
+      ctx.fillStyle = isSelected ? 'rgba(6, 182, 212, 0.45)' : 'rgba(16, 185, 129, 0.35)';
       ctx.fill();
 
       // Pin circle
@@ -149,13 +150,13 @@ export const CornerAdjuster: React.FC<CornerAdjusterProps> = ({
       ctx.arc(pt.x, pt.y, pinRadius, 0, 2 * Math.PI);
       ctx.fillStyle = isSelected ? '#06b6d4' : '#10b981';
       ctx.fill();
-      ctx.lineWidth = 2.5;
+      ctx.lineWidth = Math.max(2, Math.round(pinRadius / 4));
       ctx.strokeStyle = '#ffffff';
       ctx.stroke();
 
       // Inner target pip
       ctx.beginPath();
-      ctx.arc(pt.x, pt.y, 2.5, 0, 2 * Math.PI);
+      ctx.arc(pt.x, pt.y, pinRadius / 3, 0, 2 * Math.PI);
       ctx.fillStyle = '#ffffff';
       ctx.fill();
     }
@@ -179,19 +180,18 @@ export const CornerAdjuster: React.FC<CornerAdjusterProps> = ({
       lCanvas.width = size;
       lCanvas.height = size;
 
-      // 3.5x Magnification factor
       const zoomFactor = 3.5;
       const sampleSize = size / zoomFactor;
 
       lCtx.clearRect(0, 0, size, size);
 
-      // Clip to circular loupe
+      // Clip circular loupe
       lCtx.save();
       lCtx.beginPath();
       lCtx.arc(size / 2, size / 2, size / 2, 0, 2 * Math.PI);
       lCtx.clip();
 
-      // Draw magnified source region
+      // Magnified source region
       lCtx.drawImage(
         imageObj,
         pt.x - sampleSize / 2,
@@ -204,7 +204,7 @@ export const CornerAdjuster: React.FC<CornerAdjusterProps> = ({
         size
       );
 
-      // Loupe crosshairs
+      // Crosshairs
       lCtx.strokeStyle = '#06b6d4';
       lCtx.lineWidth = 1.5;
       lCtx.beginPath();
@@ -226,47 +226,63 @@ export const CornerAdjuster: React.FC<CornerAdjusterProps> = ({
     [imageObj]
   );
 
-  // Mouse drag handles
-  const handleMouseDown = (e: React.MouseEvent) => {
-    if (!canvasRef.current || !imageObj) return;
+  // Screen-space hit test: works reliably for both mouse and mobile touch
+  const findPinAtClientCoord = (clientX: number, clientY: number): keyof DocumentCorners | null => {
+    if (!canvasRef.current || !imageObj) return null;
     const rect = canvasRef.current.getBoundingClientRect();
-    const scale = canvasRef.current.width / rect.width;
+    if (rect.width === 0 || rect.height === 0) return null;
 
-    const mouseX = (e.clientX - rect.left) * scale;
-    const mouseY = (e.clientY - rect.top) * scale;
-
-    // Detect closest corner pin within hit radius
-    const hitRadius = Math.max(30, canvasRef.current.width / 25);
     const pinKeys: (keyof DocumentCorners)[] = ['topLeft', 'topRight', 'bottomRight', 'bottomLeft'];
+    let closestKey: keyof DocumentCorners | null = null;
+    let minScreenDist = 55; // 55px touch target radius
 
     for (const key of pinKeys) {
       const pt = corners[key];
-      const dist = Math.hypot(mouseX - pt.x, mouseY - pt.y);
-      if (dist < hitRadius) {
-        setActivePin(key);
-        setLoupePos({ x: e.clientX, y: e.clientY });
-        updateLoupe(key, pt);
-        break;
+      const screenX = rect.left + (pt.x / imageObj.naturalWidth) * rect.width;
+      const screenY = rect.top + (pt.y / imageObj.naturalHeight) * rect.height;
+      const dist = Math.hypot(clientX - screenX, clientY - screenY);
+      if (dist < minScreenDist) {
+        minScreenDist = dist;
+        closestKey = key;
       }
+    }
+    return closestKey;
+  };
+
+  const movePinToClientCoord = (pinKey: keyof DocumentCorners, clientX: number, clientY: number) => {
+    if (!canvasRef.current || !imageObj) return;
+    const rect = canvasRef.current.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return;
+
+    const scaleX = imageObj.naturalWidth / rect.width;
+    const scaleY = imageObj.naturalHeight / rect.height;
+
+    const imgX = Math.max(0, Math.min(imageObj.naturalWidth, (clientX - rect.left) * scaleX));
+    const imgY = Math.max(0, Math.min(imageObj.naturalHeight, (clientY - rect.top) * scaleY));
+
+    const updated = {
+      ...corners,
+      [pinKey]: { x: Math.round(imgX), y: Math.round(imgY) },
+    };
+    setCorners(updated);
+    setLoupePos({ x: clientX, y: clientY });
+    updateLoupe(pinKey, { x: imgX, y: imgY });
+  };
+
+  // Mouse handlers
+  const handleMouseDown = (e: React.MouseEvent) => {
+    const pin = findPinAtClientCoord(e.clientX, e.clientY);
+    if (pin) {
+      setActivePin(pin);
+      setLoupePos({ x: e.clientX, y: e.clientY });
+      updateLoupe(pin, corners[pin]);
     }
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
-    if (!activePin || !canvasRef.current || !imageObj) return;
-    const rect = canvasRef.current.getBoundingClientRect();
-    const scale = canvasRef.current.width / rect.width;
-
-    const mouseX = Math.max(0, Math.min(imageObj.naturalWidth, (e.clientX - rect.left) * scale));
-    const mouseY = Math.max(0, Math.min(imageObj.naturalHeight, (e.clientY - rect.top) * scale));
-
-    const updatedCorners = {
-      ...corners,
-      [activePin]: { x: Math.round(mouseX), y: Math.round(mouseY) },
-    };
-
-    setCorners(updatedCorners);
-    setLoupePos({ x: e.clientX, y: e.clientY });
-    updateLoupe(activePin, { x: mouseX, y: mouseY });
+    if (activePin) {
+      movePinToClientCoord(activePin, e.clientX, e.clientY);
+    }
   };
 
   const handleMouseUp = () => {
@@ -274,7 +290,32 @@ export const CornerAdjuster: React.FC<CornerAdjusterProps> = ({
     setLoupePos(null);
   };
 
-  // Re-run auto detection
+  // Touch handlers for Mobile / Tablet
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (e.touches.length > 0) {
+      const touch = e.touches[0];
+      const pin = findPinAtClientCoord(touch.clientX, touch.clientY);
+      if (pin) {
+        setActivePin(pin);
+        setLoupePos({ x: touch.clientX, y: touch.clientY });
+        updateLoupe(pin, corners[pin]);
+      }
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (activePin && e.touches.length > 0) {
+      const touch = e.touches[0];
+      movePinToClientCoord(activePin, touch.clientX, touch.clientY);
+    }
+  };
+
+  const handleTouchEnd = () => {
+    setActivePin(null);
+    setLoupePos(null);
+  };
+
+  // Quick Action Presets
   const handleAutoDetect = () => {
     if (!imageObj) return;
     const tempCanvas = document.createElement('canvas');
@@ -288,7 +329,16 @@ export const CornerAdjuster: React.FC<CornerAdjusterProps> = ({
     setCorners(detected);
   };
 
-  // Reset to default boundary inset
+  const handleCardPreset = () => {
+    if (!imageObj) return;
+    setCorners(getCardPresetCorners(imageObj.naturalWidth, imageObj.naturalHeight));
+  };
+
+  const handleFullImagePreset = () => {
+    if (!imageObj) return;
+    setCorners(getFullImageCorners(imageObj.naturalWidth, imageObj.naturalHeight));
+  };
+
   const handleResetCorners = () => {
     if (!imageObj) return;
     const w = imageObj.naturalWidth;
@@ -301,7 +351,7 @@ export const CornerAdjuster: React.FC<CornerAdjusterProps> = ({
     });
   };
 
-  // Execute Homography Transform
+  // Perspective rectifying
   const handleExecuteWarp = () => {
     if (!imageObj) return;
     const sourceCanvas = document.createElement('canvas');
@@ -311,7 +361,6 @@ export const CornerAdjuster: React.FC<CornerAdjusterProps> = ({
     if (!ctx) return;
     ctx.drawImage(imageObj, 0, 0);
 
-    // If target aspect is provided (e.g. 85.6 / 54 for ID card), compute exact proportions
     let targetW: number | undefined;
     let targetH: number | undefined;
 
@@ -332,71 +381,79 @@ export const CornerAdjuster: React.FC<CornerAdjusterProps> = ({
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
-      className="relative flex-1 bg-[#0b0f19] flex flex-col items-center justify-center p-4 overflow-hidden select-none"
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+      style={{ touchAction: 'none' }}
+      className="relative flex-1 bg-[#0b0f19] flex flex-col items-center justify-between p-2 sm:p-4 overflow-hidden select-none"
     >
-      {/* Top Floating Controls */}
-      <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 flex items-center space-x-2 bg-slate-900/90 backdrop-blur-md px-4 py-2 rounded-2xl border border-slate-700/80 shadow-2xl">
-        <button
-          onClick={handleAutoDetect}
-          className="flex items-center space-x-1.5 px-3 py-1 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/40 rounded-xl text-xs font-semibold transition"
-          title="Detect document edges automatically"
-        >
-          <Wand2 className="w-3.5 h-3.5 text-emerald-400" />
-          <span>Auto Detect Corners</span>
-        </button>
+      {/* Top Floating Controls - Responsive Wrap for Mobile */}
+      <div className="w-full max-w-3xl z-20 flex flex-wrap items-center justify-between gap-1.5 bg-slate-900/95 backdrop-blur-md px-3 py-2 rounded-2xl border border-slate-700/80 shadow-2xl">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <button
+            onClick={handleAutoDetect}
+            className="flex items-center space-x-1 px-2.5 py-1.5 bg-emerald-600/25 hover:bg-emerald-600/40 text-emerald-300 border border-emerald-500/50 rounded-xl text-xs font-semibold transition active:scale-95"
+            title="Auto detect document borders"
+          >
+            <Wand2 className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Auto Detect</span>
+          </button>
 
-        <button
-          onClick={handleResetCorners}
-          className="flex items-center space-x-1.5 px-2.5 py-1 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl text-xs transition"
-        >
-          <RotateCcw className="w-3.5 h-3.5" />
-          <span>Reset Pins</span>
-        </button>
+          <button
+            onClick={handleCardPreset}
+            className="flex items-center space-x-1 px-2.5 py-1.5 bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/40 rounded-xl text-xs font-medium transition active:scale-95"
+            title="Apply Aadhaar / PAN card ratio (85.6 x 54 mm)"
+          >
+            <CreditCard className="w-3.5 h-3.5 text-blue-400" />
+            <span className="hidden xs:inline">Card Preset</span>
+            <span className="xs:hidden">Card</span>
+          </button>
 
-        <div className="h-4 border-r border-slate-700" />
+          <button
+            onClick={handleFullImagePreset}
+            className="flex items-center space-x-1 px-2 py-1.5 text-slate-300 hover:text-white hover:bg-slate-800 rounded-xl text-xs transition active:scale-95"
+            title="Expand corners to full image"
+          >
+            <Maximize2 className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Full</span>
+          </button>
 
-        <button
-          onClick={() => setZoom((z) => Math.max(0.4, z - 0.15))}
-          className="p-1 text-slate-400 hover:text-white rounded transition"
-        >
-          <ZoomOut className="w-3.5 h-3.5" />
-        </button>
-        <span className="text-[11px] font-mono text-slate-400 w-10 text-center">
-          {Math.round(zoom * 100)}%
-        </span>
-        <button
-          onClick={() => setZoom((z) => Math.min(2.5, z + 0.15))}
-          className="p-1 text-slate-400 hover:text-white rounded transition"
-        >
-          <ZoomIn className="w-3.5 h-3.5" />
-        </button>
+          <button
+            onClick={handleResetCorners}
+            className="flex items-center space-x-1 px-2 py-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl text-xs transition active:scale-95"
+            title="Reset to 8% margin"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Reset</span>
+          </button>
+        </div>
 
-        <div className="h-4 border-r border-slate-700" />
+        <div className="flex items-center space-x-1.5 ml-auto">
+          <button
+            onClick={onCancel}
+            className="px-2.5 py-1.5 text-slate-400 hover:text-white rounded-xl text-xs transition"
+          >
+            Cancel
+          </button>
 
-        <button
-          onClick={onCancel}
-          className="px-3 py-1 text-slate-400 hover:text-white text-xs transition"
-        >
-          Cancel
-        </button>
-
-        <button
-          onClick={handleExecuteWarp}
-          className="flex items-center space-x-1.5 px-4 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white rounded-xl text-xs font-bold shadow-lg shadow-emerald-900/40 transition"
-        >
-          <span>Perspective Correction</span>
-          <ArrowRight className="w-3.5 h-3.5" />
-        </button>
+          <button
+            onClick={handleExecuteWarp}
+            className="flex items-center space-x-1 px-3.5 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white rounded-xl text-xs font-bold shadow-lg shadow-emerald-900/40 transition active:scale-95"
+          >
+            <Check className="w-3.5 h-3.5" />
+            <span>Apply</span>
+          </button>
+        </div>
       </div>
 
       {/* Main Viewport */}
       <div
-        className="relative max-w-full max-h-[75vh] flex items-center justify-center cursor-crosshair transition-transform duration-75"
+        className="relative flex-1 w-full max-h-[68vh] flex items-center justify-center cursor-crosshair overflow-hidden my-1"
         style={{ transform: `scale(${zoom})` }}
       >
         <canvas
           ref={canvasRef}
-          className="max-h-[70vh] max-w-[80vw] object-contain rounded-xl shadow-2xl border border-slate-800"
+          className="max-h-[66vh] max-w-[92vw] object-contain rounded-xl shadow-2xl border border-slate-800/80"
         />
       </div>
 
@@ -405,24 +462,24 @@ export const CornerAdjuster: React.FC<CornerAdjusterProps> = ({
         <div
           className="fixed pointer-events-none z-50 rounded-full border-4 border-cyan-400 shadow-[0_0_25px_rgba(6,182,212,0.6)] bg-black overflow-hidden"
           style={{
-            left: `${loupePos.x + 30}px`,
-            top: `${loupePos.y - 140}px`,
-            width: '120px',
-            height: '120px',
+            left: `${Math.max(10, Math.min(window.innerWidth - 130, loupePos.x - 60))}px`,
+            top: `${Math.max(10, loupePos.y - 140)}px`,
+            width: '110px',
+            height: '110px',
           }}
         >
           <canvas ref={loupeCanvasRef} className="w-full h-full" />
         </div>
       )}
 
-      {/* Bottom Instructions Footer */}
-      <div className="absolute bottom-3 left-6 right-6 flex items-center justify-between text-[11px] text-slate-400">
-        <div className="flex items-center space-x-2">
-          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-          <span>Drag the 4 corner pins onto the true edges of your ID card or document. Loupe will zoom in automatically.</span>
+      {/* Bottom Instructions / Info */}
+      <div className="w-full max-w-3xl flex items-center justify-between px-2 text-[11px] text-slate-400 shrink-0">
+        <div className="flex items-center space-x-1.5 truncate">
+          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+          <span className="truncate">Drag 4 corners or tap <strong className="text-emerald-300">Auto Detect</strong> / <strong className="text-blue-300">Card Preset</strong></span>
         </div>
-        <div className="font-mono text-slate-400 text-[10px]">
-          Homography Matrix Rectifier • Bilinear Pixel Interpolation
+        <div className="hidden sm:block font-mono text-[10px] text-slate-500">
+          Homography Rectifier
         </div>
       </div>
     </div>
