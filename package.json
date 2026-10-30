@@ -11,9 +11,13 @@
     "build:electron": "tsc -p tsconfig.electron.json",
     "package": "npm run build && electron-builder --win nsis",
     "package:portable": "npm run build && electron-builder --win portable",
-    "package:appx": "npm run build && electron-builder --win appx"
+    "package:appx": "npm run build && electron-builder --win appx",
+    "package:android": "npm run build && npx cap sync android && cd android && .\\gradlew.bat assembleRelease bundleRelease && cd .."
   },
   "dependencies": {
+    "@capacitor/android": "^8.6.0",
+    "@capacitor/app": "^8.1.2",
+    "@capacitor/core": "^8.6.0",
     "jspdf": "^2.5.2",
     "lucide-react": "^0.460.0",
     "pdf-lib": "^1.17.1",
@@ -21,6 +25,7 @@
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.6.0",
     "@types/node": "^20.17.0",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",

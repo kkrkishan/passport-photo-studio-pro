@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Passport Photo Studio Pro</string>
+    <string name="title_activity_main">Passport Photo Studio Pro</string>
+    <string name="package_name">com.kkrkishan.passportphotostudio</string>
+    <string name="custom_url_scheme">com.kkrkishan.passportphotostudio</string>
+</resources>

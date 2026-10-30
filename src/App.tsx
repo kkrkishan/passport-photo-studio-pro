@@ -6,8 +6,10 @@ import { DocumentScanner } from './components/scanner/DocumentScanner';
 import { ResizerStudio } from './components/resizer/ResizerStudio';
 import { AboutModal } from './components/common/AboutModal';
 import { UpdateModal } from './components/common/UpdateModal';
+import { MobileNavBar } from './components/common/MobileNavBar';
 import { ActiveModule, UpdateInfo } from './types';
 import { createProjectJSON, parseProjectJSON } from './services/projectService';
+import { App as CapApp } from '@capacitor/app';
 
 export const App: React.FC = () => {
   const [activeModule, setActiveModule] = useState<ActiveModule>('dashboard');
@@ -23,6 +25,32 @@ export const App: React.FC = () => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3000);
   };
+
+  // Android Native Hardware Back Button handler
+  useEffect(() => {
+    let backListener: any;
+    const setupAndroidBackButton = async () => {
+      try {
+        backListener = await CapApp.addListener('backButton', () => {
+          if (isUpdateModalOpen) {
+            setIsUpdateModalOpen(false);
+          } else if (isAboutOpen) {
+            setIsAboutOpen(false);
+          } else if (activeModule !== 'dashboard') {
+            setActiveModule('dashboard');
+          } else {
+            CapApp.exitApp();
+          }
+        });
+      } catch (e) {
+        // Not running under Capacitor native runtime, ignore
+      }
+    };
+    setupAndroidBackButton();
+    return () => {
+      backListener?.remove?.();
+    };
+  }, [activeModule, isAboutOpen, isUpdateModalOpen]);
 
   const handleCheckForUpdates = async (isManual = false) => {
     if (electronAPI && electronAPI.checkForUpdates) {
@@ -95,6 +123,20 @@ export const App: React.FC = () => {
           setActiveModule('passport');
         }
       }
+    } else {
+      // Mobile / Browser native image picker
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/*';
+      input.onchange = (e: any) => {
+        const file = e.target.files?.[0];
+        if (file) {
+          if (activeModule === 'dashboard') {
+            setActiveModule('passport');
+          }
+        }
+      };
+      input.click();
     }
   };
 
@@ -162,7 +204,7 @@ export const App: React.FC = () => {
       />
 
       {/* Main Workspace Area */}
-      <main className="flex-1 flex overflow-hidden relative">
+      <main className="flex-1 flex overflow-hidden relative pb-14 md:pb-0">
         {activeModule === 'dashboard' && (
           <Dashboard
             onSelectModule={setActiveModule}
@@ -184,11 +226,18 @@ export const App: React.FC = () => {
 
         {/* Global Toast */}
         {toastMessage && (
-          <div className="absolute bottom-6 right-6 z-50 bg-blue-600 text-white px-4 py-2.5 rounded-2xl shadow-2xl text-xs font-semibold animate-fade-in flex items-center space-x-2">
+          <div className="absolute bottom-20 md:bottom-6 right-6 z-50 bg-blue-600 text-white px-4 py-2.5 rounded-2xl shadow-2xl text-xs font-semibold animate-fade-in flex items-center space-x-2">
             <span>{toastMessage}</span>
           </div>
         )}
       </main>
+
+      {/* Mobile Bottom Navigation Bar (Visible on mobile/tablets) */}
+      <MobileNavBar
+        activeModule={activeModule}
+        onSelectModule={setActiveModule}
+        onOpenAbout={() => setIsAboutOpen(true)}
+      />
 
       {/* About Modal */}
       <AboutModal

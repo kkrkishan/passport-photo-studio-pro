@@ -32,3 +32,11 @@ Thumbs.db
 *.njsproj
 *.sln
 *.sw?
+
+# Android Gradle build outputs
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/capacitor-cordova-android-plugins/build/
+android/capacitor-cordova-android-plugins/.gradle/

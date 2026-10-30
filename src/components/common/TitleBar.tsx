@@ -236,8 +236,8 @@ export const TitleBar: React.FC<TitleBarProps> = ({
         </div>
       </div>
 
-      {/* Center: Module quick switcher pill */}
-      <div className="flex items-center space-x-1 bg-slate-950/70 p-0.5 rounded-lg border border-slate-800" style={{ WebkitAppRegion: 'no-drag' } as any}>
+      {/* Center: Module quick switcher pill (desktop only) */}
+      <div className="hidden md:flex items-center space-x-1 bg-slate-950/70 p-0.5 rounded-lg border border-slate-800" style={{ WebkitAppRegion: 'no-drag' } as any}>
         <button
           onClick={() => onSelectModule('dashboard')}
           className={`flex items-center space-x-1 px-2.5 py-1 rounded-md text-xs font-medium transition ${
@@ -284,30 +284,42 @@ export const TitleBar: React.FC<TitleBarProps> = ({
         </button>
       </div>
 
-      {/* Right: Window Controls (Minimize, Maximize, Close) */}
-      <div className="flex items-center h-full -mr-3" style={{ WebkitAppRegion: 'no-drag' } as any}>
-        <button
-          onClick={handleMinimize}
-          className="h-full px-3.5 hover:bg-slate-800 flex items-center justify-center text-slate-400 hover:text-white transition"
-          title="Minimize"
-        >
-          <Minus className="w-3.5 h-3.5" />
-        </button>
-        <button
-          onClick={handleMaximize}
-          className="h-full px-3.5 hover:bg-slate-800 flex items-center justify-center text-slate-400 hover:text-white transition"
-          title={isMaximized ? "Restore" : "Maximize"}
-        >
-          <Square className="w-3 h-3" />
-        </button>
-        <button
-          onClick={handleClose}
-          className="h-full px-4 hover:bg-red-600 flex items-center justify-center text-slate-400 hover:text-white transition"
-          title="Close"
-        >
-          <X className="w-4 h-4" />
-        </button>
-      </div>
+      {/* Right: Window Controls (Desktop Electron only) or Mobile Actions */}
+      {electronAPI ? (
+        <div className="hidden md:flex items-center h-full -mr-3" style={{ WebkitAppRegion: 'no-drag' } as any}>
+          <button
+            onClick={handleMinimize}
+            className="h-full px-3.5 hover:bg-slate-800 flex items-center justify-center text-slate-400 hover:text-white transition"
+            title="Minimize"
+          >
+            <Minus className="w-3.5 h-3.5" />
+          </button>
+          <button
+            onClick={handleMaximize}
+            className="h-full px-3.5 hover:bg-slate-800 flex items-center justify-center text-slate-400 hover:text-white transition"
+            title={isMaximized ? "Restore" : "Maximize"}
+          >
+            <Square className="w-3 h-3" />
+          </button>
+          <button
+            onClick={handleClose}
+            className="h-full px-4 hover:bg-red-600 flex items-center justify-center text-slate-400 hover:text-white transition"
+            title="Close"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      ) : (
+        <div className="flex md:hidden items-center space-x-2">
+          <button
+            onClick={onOpenAbout}
+            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
+            title="About Passport Photo Studio Pro"
+          >
+            <Info className="w-4 h-4 text-blue-400" />
+          </button>
+        </div>
+      )}
     </header>
   );
 };
