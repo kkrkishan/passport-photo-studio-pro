@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   Upload,
   Camera,
@@ -20,7 +20,8 @@ import {
   DEFAULT_ADJUSTMENTS,
   BackgroundSettings,
   SheetConfig,
-  DEFAULT_SHEET_CONFIG
+  DEFAULT_SHEET_CONFIG,
+  CropBox
 } from '../../types';
 import { PhotoEditor } from './PhotoEditor';
 import { AdjustmentPanel } from './AdjustmentPanel';
@@ -39,6 +40,9 @@ export const PassportStudio: React.FC<PassportStudioProps> = ({ onNotify }) => {
   const [activePreset, setActivePreset] = useState<PhotoPreset>(OFFICIAL_PASSPORT_PRESETS[0]);
   const [customWidthMm, setCustomWidthMm] = useState(35);
   const [customHeightMm, setCustomHeightMm] = useState(45);
+
+  // Persistent Crop Box State (Never lost or shifted when switching tabs)
+  const [cropBox, setCropBox] = useState<CropBox | null>(null);
 
   // Studio Adjustments State with History Stack
   const [adjustments, setAdjustments] = useState<Adjustments>(DEFAULT_ADJUSTMENTS);
@@ -62,6 +66,20 @@ export const PassportStudio: React.FC<PassportStudioProps> = ({ onNotify }) => {
   const [croppedCanvas, setCroppedCanvas] = useState<HTMLCanvasElement | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Calculate default biometric crop box
+  const calculateDefaultCropBox = (imgW: number, imgH: number, preset: PhotoPreset): CropBox => {
+    const targetAspect = preset.widthMm / preset.heightMm;
+    let cropH = Math.min(imgH * 0.85, (imgW * 0.85) / targetAspect);
+    let cropW = cropH * targetAspect;
+
+    return {
+      x: Math.round((imgW - cropW) / 2),
+      y: Math.round((imgH - cropH) * 0.35),
+      width: Math.round(cropW),
+      height: Math.round(cropH),
+    };
+  };
 
   // Push adjustment to undo history
   const pushAdjustmentState = (newAdj: Adjustments) => {
@@ -98,13 +116,19 @@ export const PassportStudio: React.FC<PassportStudioProps> = ({ onNotify }) => {
     const reader = new FileReader();
     reader.onload = (event) => {
       const dataUrl = event.target?.result as string;
-      setImageSrc(dataUrl);
-      setAdjustments(DEFAULT_ADJUSTMENTS);
-      setHistory([DEFAULT_ADJUSTMENTS]);
-      setHistoryIdx(0);
-      setViewMode('editor');
-      setMobileTab('editor');
-      onNotify?.(`Loaded image: ${file.name}`);
+      const img = new Image();
+      img.onload = () => {
+        const initBox = calculateDefaultCropBox(img.naturalWidth, img.naturalHeight, activePreset);
+        setCropBox(initBox);
+        setImageSrc(dataUrl);
+        setAdjustments(DEFAULT_ADJUSTMENTS);
+        setHistory([DEFAULT_ADJUSTMENTS]);
+        setHistoryIdx(0);
+        setViewMode('editor');
+        setMobileTab('editor');
+        onNotify?.(`Loaded photo: ${file.name}`);
+      };
+      img.src = dataUrl;
     };
     reader.readAsDataURL(file);
     e.target.value = '';
@@ -119,14 +143,20 @@ export const PassportStudio: React.FC<PassportStudioProps> = ({ onNotify }) => {
   };
 
   const handleCameraCapture = (dataUrl: string) => {
-    setImageSrc(dataUrl);
-    setAdjustments(DEFAULT_ADJUSTMENTS);
-    setHistory([DEFAULT_ADJUSTMENTS]);
-    setHistoryIdx(0);
-    setIsCameraOpen(false);
-    setViewMode('editor');
-    setMobileTab('editor');
-    onNotify?.('Live camera snapshot captured successfully.');
+    const img = new Image();
+    img.onload = () => {
+      const initBox = calculateDefaultCropBox(img.naturalWidth, img.naturalHeight, activePreset);
+      setCropBox(initBox);
+      setImageSrc(dataUrl);
+      setAdjustments(DEFAULT_ADJUSTMENTS);
+      setHistory([DEFAULT_ADJUSTMENTS]);
+      setHistoryIdx(0);
+      setIsCameraOpen(false);
+      setViewMode('editor');
+      setMobileTab('editor');
+      onNotify?.('Live camera photo captured.');
+    };
+    img.src = dataUrl;
   };
 
   // Auto-Enhancement Engine
@@ -168,11 +198,12 @@ export const PassportStudio: React.FC<PassportStudioProps> = ({ onNotify }) => {
   // Handle Preset Selection
   const handleSelectPreset = (preset: PhotoPreset) => {
     if (preset.id === 'custom') {
-      setActivePreset({
+      const customP = {
         ...preset,
         widthMm: customWidthMm,
         heightMm: customHeightMm,
-      });
+      };
+      setActivePreset(customP);
     } else {
       setActivePreset(preset);
     }
@@ -201,7 +232,7 @@ export const PassportStudio: React.FC<PassportStudioProps> = ({ onNotify }) => {
         mode="face"
       />
 
-      {/* Desktop Top Action Bar (hidden on mobile to prevent clutter) */}
+      {/* Desktop Top Action Bar */}
       <div className="hidden md:flex min-h-12 border-b border-slate-800 bg-slate-900/60 px-4 py-2 items-center justify-between gap-2 shrink-0">
         <div className="flex flex-wrap items-center gap-2">
           <button
@@ -323,9 +354,8 @@ export const PassportStudio: React.FC<PassportStudioProps> = ({ onNotify }) => {
         </div>
       </div>
 
-      {/* Mobile Streamlined Top Header (Only 44px - Completely clean) */}
+      {/* Mobile Streamlined Top Header (Clean 44px) */}
       <div className="flex md:hidden h-12 border-b border-slate-800 bg-slate-900/90 px-3 items-center justify-between gap-2 shrink-0 z-20">
-        {/* Left: Size Preset Selector */}
         <div className="flex items-center space-x-1.5 min-w-0">
           <span className="text-[11px] text-slate-400 font-bold shrink-0">Size:</span>
           <select
@@ -344,7 +374,6 @@ export const PassportStudio: React.FC<PassportStudioProps> = ({ onNotify }) => {
           </select>
         </div>
 
-        {/* Right: Compact Action Buttons */}
         <div className="flex items-center space-x-1.5 shrink-0">
           {imageSrc && viewMode === 'editor' && (
             <div className="flex items-center space-x-1 mr-1">
@@ -387,7 +416,6 @@ export const PassportStudio: React.FC<PassportStudioProps> = ({ onNotify }) => {
 
       {/* Main Workspace Body */}
       {!imageSrc ? (
-        // Empty State: Drag & Drop upload or capture prompt
         <div className="flex-1 flex flex-col items-center justify-center p-6 text-center select-none overflow-y-auto">
           <div className="w-20 h-20 rounded-3xl bg-blue-600/10 border border-blue-500/30 flex items-center justify-center text-blue-400 mb-5 shadow-2xl">
             <FileImage className="w-10 h-10" />
@@ -416,21 +444,6 @@ export const PassportStudio: React.FC<PassportStudioProps> = ({ onNotify }) => {
               <span>Capture Live From Camera</span>
             </button>
           </div>
-
-          <div className="mt-10 grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-2xl text-left border-t border-slate-800/80 pt-6">
-            <div className="space-y-1">
-              <div className="text-xs font-semibold text-slate-300">Biometric Alignment</div>
-              <div className="text-[11px] text-slate-500">Built-in head and eye level guidelines adhering to ISO/ICAO standards.</div>
-            </div>
-            <div className="space-y-1">
-              <div className="text-xs font-semibold text-slate-300">Studio Background</div>
-              <div className="text-[11px] text-slate-500">1-click replacement with compliant white, blue, or light gray studio backgrounds.</div>
-            </div>
-            <div className="space-y-1">
-              <div className="text-xs font-semibold text-slate-300">Dynamic Sheet Maker</div>
-              <div className="text-[11px] text-slate-500">Print 8 photos on 4×6" or up to 45+ photos on A4 with precision scissor cut marks.</div>
-            </div>
-          </div>
         </div>
       ) : viewMode === 'editor' ? (
         // Active Editing Mode
@@ -445,6 +458,8 @@ export const PassportStudio: React.FC<PassportStudioProps> = ({ onNotify }) => {
                 background={background}
                 showFaceGuide={showFaceGuide}
                 onToggleFaceGuide={() => setShowFaceGuide(!showFaceGuide)}
+                cropBox={cropBox}
+                onCropChange={setCropBox}
                 onApplyCrop={handleApplyCrop}
                 beforeAfterMode={beforeAfterMode}
               />
@@ -465,10 +480,10 @@ export const PassportStudio: React.FC<PassportStudioProps> = ({ onNotify }) => {
             </div>
           </div>
 
-          {/* Mobile Layout: Full-Screen Workspace + Live Split-Tuning + Clean Bottom Tabs */}
+          {/* Mobile Layout: 50% Live Preview + 50% Controls */}
           <div className="flex md:hidden flex-1 flex-col overflow-hidden">
             {mobileTab === 'editor' ? (
-              // Tab 1: Full-screen Photo & Crop
+              // 1. Photo & Crop View (Full screen with Crop handles)
               <div className="flex-1 flex flex-col overflow-hidden relative">
                 <PhotoEditor
                   imageSrc={imageSrc}
@@ -477,38 +492,42 @@ export const PassportStudio: React.FC<PassportStudioProps> = ({ onNotify }) => {
                   background={background}
                   showFaceGuide={showFaceGuide}
                   onToggleFaceGuide={() => setShowFaceGuide(!showFaceGuide)}
+                  cropBox={cropBox}
+                  onCropChange={setCropBox}
                   onApplyCrop={handleApplyCrop}
                   beforeAfterMode={beforeAfterMode}
+                  previewOnly={false}
                 />
               </div>
             ) : (
-              // Tab 2 or 3: Live Split-View (Photo on top 38vh, Sliders on bottom)
+              // 2. Fine Tuning or Background: STRICT 50% Live Preview / 50% Controls
               <div className="flex-1 flex flex-col overflow-hidden">
-                {/* Upper Photo Preview: Updates Live as Sliders Change! */}
-                <div className="h-[38vh] w-full bg-[#070b14] relative flex items-center justify-center p-2 border-b border-slate-800 shrink-0">
-                  <div className="w-full h-full pointer-events-none">
-                    <PhotoEditor
-                      imageSrc={imageSrc}
-                      preset={activePreset}
-                      adjustments={adjustments}
-                      background={background}
-                      showFaceGuide={false}
-                      onToggleFaceGuide={() => {}}
-                      onApplyCrop={handleApplyCrop}
-                      beforeAfterMode={beforeAfterMode}
-                    />
-                  </div>
+                {/* Upper 50%: Live Photo Canvas Preview */}
+                <div className="h-1/2 w-full bg-[#070b14] relative flex items-center justify-center p-1 border-b border-slate-800 shrink-0">
+                  <PhotoEditor
+                    imageSrc={imageSrc}
+                    preset={activePreset}
+                    adjustments={adjustments}
+                    background={background}
+                    showFaceGuide={false}
+                    onToggleFaceGuide={() => {}}
+                    cropBox={cropBox}
+                    onCropChange={setCropBox}
+                    onApplyCrop={handleApplyCrop}
+                    beforeAfterMode={beforeAfterMode}
+                    previewOnly={true}
+                  />
                   <button
                     onClick={() => setMobileTab('editor')}
-                    className="absolute top-2 right-2 px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-blue-900/40 active:scale-95 transition z-30 flex items-center space-x-1"
+                    className="absolute top-2 right-2 px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-blue-900/40 active:scale-95 transition z-30 flex items-center space-x-1"
                   >
                     <Check className="w-3.5 h-3.5" />
                     <span>Done</span>
                   </button>
                 </div>
 
-                {/* Lower Controls: Scrollable Tuning or Background */}
-                <div className="flex-1 overflow-y-auto p-2 bg-[#0b0f19]">
+                {/* Lower 50%: Scrollable Sliders or Background Tools */}
+                <div className="h-1/2 overflow-y-auto bg-slate-900">
                   {mobileTab === 'tuning' ? (
                     <AdjustmentPanel
                       adjustments={adjustments}
@@ -517,6 +536,7 @@ export const PassportStudio: React.FC<PassportStudioProps> = ({ onNotify }) => {
                       onReset={handleResetAdjustments}
                       beforeAfterMode={beforeAfterMode}
                       onToggleBeforeAfter={() => setBeforeAfterMode(!beforeAfterMode)}
+                      onDone={() => setMobileTab('editor')}
                     />
                   ) : (
                     <BackgroundStudio

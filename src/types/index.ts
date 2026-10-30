@@ -1,5 +1,12 @@
 export type ActiveModule = 'dashboard' | 'passport' | 'scanner' | 'resizer';
 
+export interface CropBox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 export interface PhotoPreset {
   id: string;
   name: string;
@@ -67,6 +74,8 @@ export interface BackgroundSettings {
   color: string; // hex
   tolerance: number; // 0 to 100
   feather: number;   // 0 to 20
+  sourceColor?: string; // hex or rgb of source color to remove (optional)
+  transparent?: boolean; // make removed background transparent
 }
 
 export interface SheetConfig {

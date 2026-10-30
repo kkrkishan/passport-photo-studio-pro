@@ -190,61 +190,140 @@ export function calculateAutoEnhance(imageData: ImageData): Partial<Adjustments>
  * Studio Background Replacement
  * Samples background near edges and replaces matching colors with the selected studio color
  */
+/**
+ * Studio Background Replacement
+ * Supports custom source color picking (eyedropper), border-connected flood fill,
+ * edge feathering, and transparent PNG cutouts.
+ */
 export function applyStudioBackground(
   imageData: ImageData,
   bgSettings: BackgroundSettings
 ): ImageData {
   if (!bgSettings.enabled) return imageData;
 
-  const hex = bgSettings.color.replace('#', '');
+  const hex = (bgSettings.color || '#ffffff').replace('#', '');
   const targetR = parseInt(hex.substring(0, 2), 16) || 255;
   const targetG = parseInt(hex.substring(2, 4), 16) || 255;
   const targetB = parseInt(hex.substring(4, 6), 16) || 255;
+  const isTransparent = !!bgSettings.transparent;
 
   const w = imageData.width;
   const h = imageData.height;
   const data = imageData.data;
 
-  // Sample background color from top-left, top-center, and top-right corners
-  const sampleIndices = [
-    0, // Top-left
-    Math.floor(w / 2) * 4, // Top-mid
-    (w - 1) * 4, // Top-right
-    (Math.floor(h / 4) * w) * 4, // Left upper
-    (Math.floor(h / 4) * w + (w - 1)) * 4 // Right upper
-  ];
+  // Determine source color to replace
+  let sampleR: number, sampleG: number, sampleB: number;
 
-  let sampleR = 0, sampleG = 0, sampleB = 0;
-  for (const idx of sampleIndices) {
-    sampleR += data[idx];
-    sampleG += data[idx + 1];
-    sampleB += data[idx + 2];
+  if (bgSettings.sourceColor) {
+    const srcHex = bgSettings.sourceColor.replace('#', '');
+    sampleR = parseInt(srcHex.substring(0, 2), 16) || 255;
+    sampleG = parseInt(srcHex.substring(2, 4), 16) || 255;
+    sampleB = parseInt(srcHex.substring(4, 6), 16) || 255;
+  } else {
+    // Sample along top and upper side perimeters
+    const sampleIndices: number[] = [];
+    const step = Math.max(1, Math.floor(w / 16));
+    // Top border
+    for (let x = 0; x < w; x += step) {
+      sampleIndices.push(x * 4);
+    }
+    // Upper quarter left & right borders
+    const quarterH = Math.floor(h / 3);
+    for (let y = 0; y < quarterH; y += Math.max(1, Math.floor(h / 20))) {
+      sampleIndices.push((y * w) * 4);
+      sampleIndices.push((y * w + (w - 1)) * 4);
+    }
+
+    let rSum = 0, gSum = 0, bSum = 0;
+    for (const idx of sampleIndices) {
+      rSum += data[idx];
+      gSum += data[idx + 1];
+      bSum += data[idx + 2];
+    }
+    sampleR = rSum / sampleIndices.length;
+    sampleG = gSum / sampleIndices.length;
+    sampleB = bSum / sampleIndices.length;
   }
-  sampleR /= sampleIndices.length;
-  sampleG /= sampleIndices.length;
-  sampleB /= sampleIndices.length;
 
-  const tolerance = (bgSettings.tolerance / 100) * 130 + 15; // sensitivity threshold
-  const feather = Math.max(1, bgSettings.feather * 2);
+  const tolerance = (bgSettings.tolerance / 100) * 140 + 10;
+  const feather = Math.max(1, (bgSettings.feather || 3) * 2);
 
-  for (let i = 0; i < data.length; i += 4) {
-    const r = data[i];
-    const g = data[i + 1];
-    const b = data[i + 2];
+  // Border-connected flood-fill mask
+  // 1 = background, 0 = foreground / unvisited
+  const mask = new Uint8Array(w * h);
+  const queue: number[] = [];
 
-    // Color distance from sampled background
-    const dist = Math.sqrt(
-      Math.pow(r - sampleR, 2) +
-      Math.pow(g - sampleG, 2) +
-      Math.pow(b - sampleB, 2)
-    );
+  // Seed with top, left, and right border pixels
+  const isColorMatch = (r: number, g: number, b: number) => {
+    return Math.hypot(r - sampleR, g - sampleG, b - sampleB) < tolerance;
+  };
 
-    if (dist < tolerance) {
-      // Calculate blend alpha for smooth edges
+  // Check top row
+  for (let x = 0; x < w; x++) {
+    const idx = x * 4;
+    if (isColorMatch(data[idx], data[idx + 1], data[idx + 2])) {
+      mask[x] = 1;
+      queue.push(x);
+    }
+  }
+  // Check left and right columns (top 80%)
+  const maxScanY = Math.floor(h * 0.85);
+  for (let y = 1; y < maxScanY; y++) {
+    const leftIdx = (y * w) * 4;
+    if (isColorMatch(data[leftIdx], data[leftIdx + 1], data[leftIdx + 2]) && !mask[y * w]) {
+      mask[y * w] = 1;
+      queue.push(y * w);
+    }
+    const rightIdx = (y * w + (w - 1)) * 4;
+    if (isColorMatch(data[rightIdx], data[rightIdx + 1], data[rightIdx + 2]) && !mask[y * w + (w - 1)]) {
+      mask[y * w + (w - 1)] = 1;
+      queue.push(y * w + (w - 1));
+    }
+  }
+
+  // BFS propagation (flood-fill only matching connected background)
+  let head = 0;
+  while (head < queue.length) {
+    const pos = queue[head++];
+    const px = pos % w;
+    const py = Math.floor(pos / w);
+
+    const neighbors = [
+      px > 0 ? pos - 1 : -1,
+      px < w - 1 ? pos + 1 : -1,
+      py > 0 ? pos - w : -1,
+      py < h - 1 ? pos + w : -1,
+    ];
+
+    for (const n of neighbors) {
+      if (n >= 0 && mask[n] === 0) {
+        const nIdx = n * 4;
+        if (isColorMatch(data[nIdx], data[nIdx + 1], data[nIdx + 2])) {
+          mask[n] = 1;
+          queue.push(n);
+        }
+      }
+    }
+  }
+
+  // Apply replacement with feathering to all masked background pixels
+  for (let i = 0; i < mask.length; i++) {
+    if (mask[i] === 1) {
+      const pIdx = i * 4;
+      const r = data[pIdx];
+      const g = data[pIdx + 1];
+      const b = data[pIdx + 2];
+
+      const dist = Math.hypot(r - sampleR, g - sampleG, b - sampleB);
       const alpha = Math.min(1, Math.max(0, (dist - (tolerance - feather)) / feather));
-      data[i] = Math.round(targetR * (1 - alpha) + r * alpha);
-      data[i + 1] = Math.round(targetG * (1 - alpha) + g * alpha);
-      data[i + 2] = Math.round(targetB * (1 - alpha) + b * alpha);
+
+      if (isTransparent) {
+        data[pIdx + 3] = Math.round(255 * alpha);
+      } else {
+        data[pIdx] = Math.round(targetR * (1 - alpha) + r * alpha);
+        data[pIdx + 1] = Math.round(targetG * (1 - alpha) + g * alpha);
+        data[pIdx + 2] = Math.round(targetB * (1 - alpha) + b * alpha);
+      }
     }
   }
 
