@@ -26,6 +26,13 @@ allprojects {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
+    afterEvaluate { project ->
+        if (project.plugins.hasPlugin("kotlin-android") || project.plugins.hasPlugin("org.jetbrains.kotlin.android")) {
+            project.kotlin {
+                jvmToolchain(17)
+            }
+        }
+    }
     configurations.all {
         resolutionStrategy {
             eachDependency { DependencyResolveDetails details ->

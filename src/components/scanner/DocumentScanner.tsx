@@ -26,6 +26,7 @@ import { DocumentEnhancer } from './DocumentEnhancer';
 import { A4SheetLayout } from './A4SheetLayout';
 import { CameraModal } from '../common/CameraModal';
 import { saveOrDownloadFile } from '../../services/exportHelper';
+import { capturePhotoOrWebcam } from '../../services/nativeCameraHelper';
 
 const createEmptySlot = (): DocumentSlotState => ({
   rawImage: null,
@@ -240,6 +241,14 @@ export const DocumentScanner: React.FC = () => {
     );
   }
 
+  const handleTriggerCamera = (slot: 'front' | 'back') => {
+    setActiveSlotTarget(slot);
+    capturePhotoOrWebcam({
+      openWebcamModal: () => setIsCameraOpen(true),
+      onPhotoCaptured: handleCameraCapture,
+    });
+  };
+
   // Main Slot Overview
   return (
     <div className="flex-1 flex flex-col h-full bg-[#0b0f19] select-none overflow-hidden text-slate-200">
@@ -301,10 +310,7 @@ export const DocumentScanner: React.FC = () => {
             label="FRONT SIDE"
             slotData={activeSet.front}
             onOpen={() => handleSlotOpenFile('front')}
-            onCapture={() => {
-              setActiveSlotTarget('front');
-              setIsCameraOpen(true);
-            }}
+            onCapture={() => handleTriggerCamera('front')}
             onEditCorners={() => {
               setActiveSlotTarget('front');
               setViewMode('corners');
@@ -322,10 +328,7 @@ export const DocumentScanner: React.FC = () => {
             label="BACK SIDE"
             slotData={activeSet.back}
             onOpen={() => handleSlotOpenFile('back')}
-            onCapture={() => {
-              setActiveSlotTarget('back');
-              setIsCameraOpen(true);
-            }}
+            onCapture={() => handleTriggerCamera('back')}
             onEditCorners={() => {
               setActiveSlotTarget('back');
               setViewMode('corners');

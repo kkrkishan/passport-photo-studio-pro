@@ -17,7 +17,10 @@
   "dependencies": {
     "@capacitor/android": "^8.6.0",
     "@capacitor/app": "^8.1.2",
+    "@capacitor/camera": "^8.2.6",
     "@capacitor/core": "^8.6.0",
+    "@capacitor/filesystem": "^8.1.5",
+    "@capacitor/share": "^8.0.3",
     "jspdf": "^2.5.2",
     "lucide-react": "^0.460.0",
     "pdf-lib": "^1.17.1",
