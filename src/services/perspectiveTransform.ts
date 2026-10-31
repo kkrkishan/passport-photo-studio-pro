@@ -5,6 +5,12 @@ import { DocumentCorners, Point2D } from '../types';
  * Robustly detects ID cards (Aadhaar, Voter ID, PAN, Driving Licence) in real-world mobile photos
  * using multi-threshold gradient analysis, edge line regression, and line intersection.
  */
+/**
+ * High-Precision Document & ID Card Corner Auto-Detection Engine.
+ * Robustly detects ID cards (Aadhaar, Voter ID, PAN, Driving Licence) and documents
+ * in real-world mobile & desktop photos using multi-scale gradient analysis,
+ * peak gradient boundary tracking, outlier-rejected robust line fitting, and line intersection.
+ */
 export function autoDetectDocumentCorners(
   imageData: ImageData
 ): DocumentCorners {
@@ -12,29 +18,28 @@ export function autoDetectDocumentCorners(
   const h = imageData.height;
   const data = imageData.data;
 
-  // 1. Downsample to standardized grid (max dim 360px) for speed & noise suppression
-  const maxDim = 360;
+  // 1. Downsample to standardized grid (max dim 400px) for speed & noise suppression
+  const maxDim = 400;
   const scale = Math.max(1, Math.max(w, h) / maxDim);
-  const gw = Math.max(30, Math.floor(w / scale));
-  const gh = Math.max(30, Math.floor(h / scale));
+  const gw = Math.max(40, Math.floor(w / scale));
+  const gh = Math.max(40, Math.floor(h / scale));
 
   // Compute luminance
   const lum = new Float32Array(gw * gh);
-  let totalLum = 0;
   for (let gy = 0; gy < gh; gy++) {
     const origY = Math.min(h - 1, Math.floor(gy * scale));
     for (let gx = 0; gx < gw; gx++) {
       const origX = Math.min(w - 1, Math.floor(gx * scale));
       const idx = (origY * w + origX) * 4;
-      const l = 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2];
-      lum[gy * gw + gx] = l;
-      totalLum += l;
+      lum[gy * gw + gx] = 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2];
     }
   }
 
-  // 2. Sobel Edge Gradient Filter
+  // 2. Sobel Edge Gradient Filter with noise suppression
   const grad = new Float32Array(gw * gh);
+  let gradSum = 0;
   let maxGradVal = 0;
+  let count = 0;
 
   for (let gy = 1; gy < gh - 1; gy++) {
     for (let gx = 1; gx < gw - 1; gx++) {
@@ -49,68 +54,97 @@ export function autoDetectDocumentCorners(
 
       const gVal = Math.hypot(gxDiff, gyDiff);
       grad[gy * gw + gx] = gVal;
+      gradSum += gVal;
+      count++;
       if (gVal > maxGradVal) maxGradVal = gVal;
     }
   }
 
-  // Adaptive threshold
-  const edgeThreshold = Math.max(30, maxGradVal * 0.18);
+  const avgGrad = count > 0 ? gradSum / count : 15;
+  // Adaptive threshold based on average gradient magnitude
+  const edgeThreshold = Math.max(18, Math.min(45, avgGrad * 1.35));
 
   // 3. Scan 4 principal boundaries from frame borders inward toward center
-  // Collect candidate edge points for Top, Bottom, Left, and Right sides of the card
+  // Collect candidate edge points with peak gradient tracking
   const topEdgePoints: Point2D[] = [];
   const bottomEdgePoints: Point2D[] = [];
   const leftEdgePoints: Point2D[] = [];
   const rightEdgePoints: Point2D[] = [];
 
-  const marginX = Math.floor(gw * 0.08);
-  const marginY = Math.floor(gh * 0.08);
-  const step = Math.max(2, Math.floor(gw / 30));
+  const marginX = Math.max(2, Math.floor(gw * 0.04));
+  const marginY = Math.max(2, Math.floor(gh * 0.04));
+  const step = Math.max(2, Math.floor(gw / 40));
 
-  // Top Edge: Scan vertically down from top border across columns
+  // Top Edge: Scan vertically down from top border across columns to find peak gradient
   for (let gx = marginX; gx < gw - marginX; gx += step) {
-    for (let gy = marginY; gy < Math.floor(gh * 0.45); gy++) {
-      if (grad[gy * gw + gx] > edgeThreshold) {
-        topEdgePoints.push({ x: gx, y: gy });
-        break;
+    let peakGrad = 0;
+    let peakY = -1;
+    for (let gy = marginY; gy < Math.floor(gh * 0.65); gy++) {
+      const g = grad[gy * gw + gx];
+      if (g > edgeThreshold && g > peakGrad) {
+        peakGrad = g;
+        peakY = gy;
       }
+    }
+    if (peakY > 0) {
+      topEdgePoints.push({ x: gx, y: peakY });
     }
   }
 
-  // Bottom Edge: Scan vertically up from bottom border across columns
+  // Bottom Edge: Scan vertically up from bottom border across columns to find peak gradient
   for (let gx = marginX; gx < gw - marginX; gx += step) {
-    for (let gy = gh - marginY - 1; gy > Math.floor(gh * 0.55); gy--) {
-      if (grad[gy * gw + gx] > edgeThreshold) {
-        bottomEdgePoints.push({ x: gx, y: gy });
-        break;
+    let peakGrad = 0;
+    let peakY = -1;
+    for (let gy = gh - marginY - 1; gy > Math.floor(gh * 0.35); gy--) {
+      const g = grad[gy * gw + gx];
+      if (g > edgeThreshold && g > peakGrad) {
+        peakGrad = g;
+        peakY = gy;
       }
+    }
+    if (peakY > 0) {
+      bottomEdgePoints.push({ x: gx, y: peakY });
     }
   }
 
-  // Left Edge: Scan horizontally right from left border across rows
+  // Left Edge: Scan horizontally right from left border across rows to find peak gradient
   for (let gy = marginY; gy < gh - marginY; gy += step) {
-    for (let gx = marginX; gx < Math.floor(gw * 0.45); gx++) {
-      if (grad[gy * gw + gx] > edgeThreshold) {
-        leftEdgePoints.push({ x: gx, y: gy });
-        break;
+    let peakGrad = 0;
+    let peakX = -1;
+    for (let gx = marginX; gx < Math.floor(gw * 0.65); gx++) {
+      const g = grad[gy * gw + gx];
+      if (g > edgeThreshold && g > peakGrad) {
+        peakGrad = g;
+        peakX = gx;
       }
+    }
+    if (peakX > 0) {
+      leftEdgePoints.push({ x: peakX, y: gy });
     }
   }
 
-  // Right Edge: Scan horizontally left from right border across rows
+  // Right Edge: Scan horizontally left from right border across rows to find peak gradient
   for (let gy = marginY; gy < gh - marginY; gy += step) {
-    for (let gx = gw - marginX - 1; gx > Math.floor(gw * 0.55); gx--) {
-      if (grad[gy * gw + gx] > edgeThreshold) {
-        rightEdgePoints.push({ x: gx, y: gy });
-        break;
+    let peakGrad = 0;
+    let peakX = -1;
+    for (let gx = gw - marginX - 1; gx > Math.floor(gw * 0.35); gx--) {
+      const g = grad[gy * gw + gx];
+      if (g > edgeThreshold && g > peakGrad) {
+        peakGrad = g;
+        peakX = gx;
       }
+    }
+    if (peakX > 0) {
+      rightEdgePoints.push({ x: peakX, y: gy });
     }
   }
 
-  // 4. Line Fitting: Fit line equations to the 4 card edges
+  // 4. Robust Line Fitting with Outlier Rejection
   // y = m*x + c for horizontal lines (top, bottom)
-  function fitHorizontalLine(points: Point2D[], defaultY: number): { m: number; c: number } {
+  function fitRobustHorizontalLine(points: Point2D[], defaultY: number): { m: number; c: number } {
     if (points.length < 3) return { m: 0, c: defaultY };
+
+    // Initial least-squares fit
     let sumX = 0, sumY = 0, sumXY = 0, sumXX = 0;
     for (const p of points) {
       sumX += p.x;
@@ -121,16 +155,40 @@ export function autoDetectDocumentCorners(
     const n = points.length;
     const denom = n * sumXX - sumX * sumX;
     if (Math.abs(denom) < 1e-5) return { m: 0, c: sumY / n };
-    const m = (n * sumXY - sumX * sumY) / denom;
-    const c = (sumY - m * sumX) / n;
-    // Clamp slope to reasonable card tilt (-0.5 to 0.5)
-    const clampedM = Math.max(-0.5, Math.min(0.5, m));
-    return { m: clampedM, c: (sumY - clampedM * sumX) / n };
+    let m = (n * sumXY - sumX * sumY) / denom;
+    let c = (sumY - m * sumX) / n;
+
+    // Filter outliers (points further than 2.5x median error)
+    const residuals = points.map(p => Math.abs(p.y - (m * p.x + c)));
+    const sortedRes = [...residuals].sort((a, b) => a - b);
+    const medianRes = sortedRes[Math.floor(sortedRes.length / 2)] || 2;
+    const maxAllowedDist = Math.max(4, medianRes * 2.2);
+
+    const inliers = points.filter((_, idx) => residuals[idx] <= maxAllowedDist);
+    if (inliers.length >= 3) {
+      let iSumX = 0, iSumY = 0, iSumXY = 0, iSumXX = 0;
+      for (const p of inliers) {
+        iSumX += p.x;
+        iSumY += p.y;
+        iSumXY += p.x * p.y;
+        iSumXX += p.x * p.x;
+      }
+      const inCount = inliers.length;
+      const iDenom = inCount * iSumXX - iSumX * iSumX;
+      if (Math.abs(iDenom) >= 1e-5) {
+        m = (inCount * iSumXY - iSumX * iSumY) / iDenom;
+        c = (iSumY - m * iSumX) / inCount;
+      }
+    }
+
+    const clampedM = Math.max(-0.6, Math.min(0.6, m));
+    return { m: clampedM, c: c };
   }
 
   // x = m*y + c for vertical lines (left, right)
-  function fitVerticalLine(points: Point2D[], defaultX: number): { m: number; c: number } {
+  function fitRobustVerticalLine(points: Point2D[], defaultX: number): { m: number; c: number } {
     if (points.length < 3) return { m: 0, c: defaultX };
+
     let sumX = 0, sumY = 0, sumXY = 0, sumYY = 0;
     for (const p of points) {
       sumX += p.x;
@@ -141,20 +199,42 @@ export function autoDetectDocumentCorners(
     const n = points.length;
     const denom = n * sumYY - sumY * sumY;
     if (Math.abs(denom) < 1e-5) return { m: 0, c: sumX / n };
-    const m = (n * sumXY - sumY * sumX) / denom;
-    const c = (sumX - m * sumY) / n;
-    const clampedM = Math.max(-0.5, Math.min(0.5, m));
-    return { m: clampedM, c: (sumX - clampedM * sumY) / n };
+    let m = (n * sumXY - sumY * sumX) / denom;
+    let c = (sumX - m * sumY) / n;
+
+    // Filter outliers
+    const residuals = points.map(p => Math.abs(p.x - (m * p.y + c)));
+    const sortedRes = [...residuals].sort((a, b) => a - b);
+    const medianRes = sortedRes[Math.floor(sortedRes.length / 2)] || 2;
+    const maxAllowedDist = Math.max(4, medianRes * 2.2);
+
+    const inliers = points.filter((_, idx) => residuals[idx] <= maxAllowedDist);
+    if (inliers.length >= 3) {
+      let iSumX = 0, iSumY = 0, iSumXY = 0, iSumYY = 0;
+      for (const p of inliers) {
+        iSumX += p.x;
+        iSumY += p.y;
+        iSumXY += p.x * p.y;
+        iSumYY += p.y * p.y;
+      }
+      const inCount = inliers.length;
+      const iDenom = inCount * iSumYY - iSumY * iSumY;
+      if (Math.abs(iDenom) >= 1e-5) {
+        m = (inCount * iSumXY - iSumY * iSumX) / iDenom;
+        c = (iSumX - m * iSumY) / inCount;
+      }
+    }
+
+    const clampedM = Math.max(-0.6, Math.min(0.6, m));
+    return { m: clampedM, c: c };
   }
 
-  const topLine = fitHorizontalLine(topEdgePoints, gh * 0.12);
-  const bottomLine = fitHorizontalLine(bottomEdgePoints, gh * 0.88);
-  const leftLine = fitVerticalLine(leftEdgePoints, gw * 0.10);
-  const rightLine = fitVerticalLine(rightEdgePoints, gw * 0.90);
+  const topLine = fitRobustHorizontalLine(topEdgePoints, gh * 0.08);
+  const bottomLine = fitRobustHorizontalLine(bottomEdgePoints, gh * 0.92);
+  const leftLine = fitRobustVerticalLine(leftEdgePoints, gw * 0.08);
+  const rightLine = fitRobustVerticalLine(rightEdgePoints, gw * 0.92);
 
   // 5. Intersect lines to find 4 corner points
-  // Intersection of y = m_h * x + c_h and x = m_v * y + c_v
-  // y = m_h * (m_v * y + c_v) + c_h  =>  y * (1 - m_h * m_v) = m_h * c_v + c_h
   function intersectLines(
     hLine: { m: number; c: number },
     vLine: { m: number; c: number },
@@ -166,15 +246,15 @@ export function autoDetectDocumentCorners(
     const y = (hLine.m * vLine.c + hLine.c) / denom;
     const x = vLine.m * y + vLine.c;
     return {
-      x: Math.round(Math.max(2, Math.min(gw - 2, x))),
-      y: Math.round(Math.max(2, Math.min(gh - 2, y))),
+      x: Math.round(Math.max(1, Math.min(gw - 1, x))),
+      y: Math.round(Math.max(1, Math.min(gh - 1, y))),
     };
   }
 
-  const tlG = intersectLines(topLine, leftLine, gw * 0.10, gh * 0.12);
-  const trG = intersectLines(topLine, rightLine, gw * 0.90, gh * 0.12);
-  const brG = intersectLines(bottomLine, rightLine, gw * 0.90, gh * 0.88);
-  const blG = intersectLines(bottomLine, leftLine, gw * 0.10, gh * 0.88);
+  const tlG = intersectLines(topLine, leftLine, gw * 0.06, gh * 0.06);
+  const trG = intersectLines(topLine, rightLine, gw * 0.94, gh * 0.06);
+  const brG = intersectLines(bottomLine, rightLine, gw * 0.94, gh * 0.94);
+  const blG = intersectLines(bottomLine, leftLine, gw * 0.06, gh * 0.94);
 
   // Scale back to full image resolution
   const tl: Point2D = { x: Math.round(tlG.x * scale), y: Math.round(tlG.y * scale) };
@@ -182,7 +262,7 @@ export function autoDetectDocumentCorners(
   const br: Point2D = { x: Math.round(brG.x * scale), y: Math.round(brG.y * scale) };
   const bl: Point2D = { x: Math.round(blG.x * scale), y: Math.round(blG.y * scale) };
 
-  // 6. Convexity and Card Proportion Validation
+  // 6. Validation: Check quadrilateral area, geometry & proportions
   const widthTop = Math.hypot(tr.x - tl.x, tr.y - tl.y);
   const widthBottom = Math.hypot(br.x - bl.x, br.y - bl.y);
   const heightLeft = Math.hypot(bl.x - tl.x, bl.y - tl.y);
@@ -192,7 +272,7 @@ export function autoDetectDocumentCorners(
   const avgH = (heightLeft + heightRight) / 2;
   const detectedAspect = avgW / Math.max(1, avgH);
 
-  // Quad area using shoelace formula
+  // Shoelace area formula
   const quadArea = 0.5 * Math.abs(
     (tl.x * tr.y - tr.x * tl.y) +
     (tr.x * br.y - br.x * tr.y) +
@@ -201,12 +281,12 @@ export function autoDetectDocumentCorners(
   );
   const totalArea = w * h;
 
-  // Standard ID card is ~1.58 aspect ratio (Aadhaar, PAN, Voter ID). Allow 1.1 to 2.2
+  // Supports both portrait documents/certificates (aspect 0.45 - 1.0) and landscape ID cards (aspect 1.0 - 2.6)
   const isValidCard =
-    quadArea > totalArea * 0.12 &&
-    quadArea < totalArea * 0.96 &&
-    detectedAspect >= 1.05 &&
-    detectedAspect <= 2.4 &&
+    quadArea > totalArea * 0.10 &&
+    quadArea < totalArea * 0.98 &&
+    detectedAspect >= 0.45 &&
+    detectedAspect <= 2.6 &&
     tl.x < tr.x && bl.x < br.x &&
     tl.y < bl.y && tr.y < br.y;
 
@@ -543,6 +623,31 @@ export function applyDocumentEnhance(
     data[i] = Math.max(0, Math.min(255, r));
     data[i + 1] = Math.max(0, Math.min(255, g));
     data[i + 2] = Math.max(0, Math.min(255, b));
+  }
+
+  // Apply real unsharp mask text sharpening if requested
+  if (adjustments && adjustments.sharpness > 0) {
+    const amount = (adjustments.sharpness / 100) * 1.5;
+    const w = imageData.width;
+    const h = imageData.height;
+    const srcCopy = new Uint8ClampedArray(data);
+
+    for (let y = 1; y < h - 1; y++) {
+      for (let x = 1; x < w - 1; x++) {
+        const centerIdx = (y * w + x) * 4;
+        for (let c = 0; c < 3; c++) {
+          const val = srcCopy[centerIdx + c];
+          // 3x3 Laplacian edge kernel
+          const neighbors =
+            srcCopy[((y - 1) * w + x) * 4 + c] +
+            srcCopy[((y + 1) * w + x) * 4 + c] +
+            srcCopy[(y * w + (x - 1)) * 4 + c] +
+            srcCopy[(y * w + (x + 1)) * 4 + c];
+          const laplacian = 4 * val - neighbors;
+          data[centerIdx + c] = Math.max(0, Math.min(255, val + amount * laplacian));
+        }
+      }
+    }
   }
 
   return imageData;

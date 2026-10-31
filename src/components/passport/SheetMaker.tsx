@@ -101,7 +101,7 @@ export const SheetMaker: React.FC<SheetMakerProps> = ({
   const handleExportPDF = async () => {
     try {
       setIsExporting(true);
-      setExportMessage('Generating 300 DPI Print-Ready PDF...');
+      setExportMessage(`Generating ${config.dpi} DPI Print-Ready PDF...`);
 
       const pdfDataUrl = await generatePassportSheetPDF(croppedCanvas, layout, config);
       const defaultName = `Passport_Sheet_${config.paperId}_${layout.totalPhotos}Photos.pdf`;

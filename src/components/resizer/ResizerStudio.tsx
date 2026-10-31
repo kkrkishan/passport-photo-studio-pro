@@ -39,6 +39,7 @@ type SubTab =
 
 export const ResizerStudio: React.FC<ResizerStudioProps> = ({ onNotify }) => {
   const [activeTab, setActiveTab] = useState<SubTab>('overview');
+  const [selectedExamPreset, setSelectedExamPreset] = useState<ExamPreset | null>(null);
 
   const navItems = [
     { id: 'overview', label: 'Resizer Dashboard', icon: LayoutDashboard },
@@ -52,6 +53,7 @@ export const ResizerStudio: React.FC<ResizerStudioProps> = ({ onNotify }) => {
   ];
 
   const handleApplyPreset = (preset: ExamPreset, mode: 'resizer' | 'compressor') => {
+    setSelectedExamPreset(preset);
     setActiveTab(mode === 'resizer' ? 'photo-resizer' : 'photo-compressor');
     onNotify?.(`Preset applied: ${preset.name}`);
   };
@@ -302,11 +304,17 @@ export const ResizerStudio: React.FC<ResizerStudioProps> = ({ onNotify }) => {
         )}
 
         {activeTab === 'photo-resizer' && (
-          <PhotoResizerView onNotify={onNotify} />
+          <PhotoResizerView
+            appliedPreset={selectedExamPreset}
+            onNotify={onNotify}
+          />
         )}
 
         {activeTab === 'photo-compressor' && (
-          <PhotoCompressorView onNotify={onNotify} />
+          <PhotoCompressorView
+            appliedPreset={selectedExamPreset}
+            onNotify={onNotify}
+          />
         )}
 
         {activeTab === 'exam-presets' && (

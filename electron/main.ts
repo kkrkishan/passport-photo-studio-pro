@@ -172,8 +172,8 @@ ipcMain.handle('dialog:saveExport', async (_event, {
     return { success: false, canceled: true };
   }
 
-  // Extract raw base64 data
-  const base64Data = dataBase64.replace(/^data:[^;]+;base64,/, '');
+  // Extract raw base64 data safely regardless of header format (e.g. data:application/pdf;filename=...;base64, or data:image/png;base64,)
+  const base64Data = dataBase64.includes(',') ? dataBase64.split(',')[1] : dataBase64;
   const buffer = Buffer.from(base64Data, 'base64');
   await fs.promises.writeFile(result.filePath, buffer);
   const stat = await fs.promises.stat(result.filePath);

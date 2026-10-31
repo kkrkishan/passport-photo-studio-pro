@@ -11,6 +11,30 @@ const MediaStoreSaver = registerPlugin<{
   savePdfToDownloads: (options: { base64: string; fileName: string }) => Promise<{ success: boolean; filePath: string; uri: string; bytes: number }>;
 }>('MediaStoreSaver');
 
+/**
+ * Universal File Naming Rule:
+ * Attaches timestamp in format YYYYMMDD_HHMMSS (e.g. 20261031_204512) to filename before extension.
+ * This guarantees unique filenames and eliminates "File already exists" errors.
+ */
+export function attachTimestampToFileName(fileName: string): string {
+  const now = new Date();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const timestamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+
+  // If filename already has a timestamp like _\d{8}_\d{6}, don't duplicate
+  if (/_\d{8}_\d{6}(\.[a-zA-Z0-9]+)?$/.test(fileName)) {
+    return fileName;
+  }
+
+  const lastDot = fileName.lastIndexOf('.');
+  if (lastDot > 0) {
+    const base = fileName.substring(0, lastDot);
+    const ext = fileName.substring(lastDot);
+    return `${base}_${timestamp}${ext}`;
+  }
+  return `${fileName}_${timestamp}`;
+}
+
 export async function saveOrDownloadFile({
   dataUrl,
   defaultName,
@@ -26,12 +50,18 @@ export async function saveOrDownloadFile({
     const normalizedFormat: 'pdf' | 'png' | 'jpg' | 'webp' =
       format === 'pdf' ? 'pdf' : format === 'png' ? 'png' : format === 'webp' ? 'webp' : 'jpg';
 
+    // Apply Universal Timestamp Rule to ensure unique filenames without collisions
+    const timeStampedName = attachTimestampToFileName(defaultName);
+
+    // Clean base64 string safely (extract everything after the comma)
+    const cleanBase64 = dataUrl.includes(',') ? dataUrl.split(',')[1] : dataUrl;
+
     // 1. If running in native Electron Desktop app, use native file system via secure IPC
     const electronAPI = (window as any).electronAPI;
     if (electronAPI && typeof electronAPI.saveExport === 'function') {
       const res = await electronAPI.saveExport({
-        dataBase64: dataUrl,
-        defaultName,
+        dataBase64: `data:${normalizedFormat === 'pdf' ? 'application/pdf' : `image/${normalizedFormat}`};base64,${cleanBase64}`,
+        defaultName: timeStampedName,
         format: normalizedFormat,
       });
 
@@ -45,25 +75,21 @@ export async function saveOrDownloadFile({
 
     // 2. If running on Mobile (Capacitor Android / iOS)
     if (Capacitor.isNativePlatform()) {
-      // Clean base64 string
-      const cleanBase64 = dataUrl.includes(',') ? dataUrl.split(',')[1] : dataUrl;
-
       // A. Try native MediaStoreSaver first (saves directly to Gallery for images, Downloads for PDFs)
       try {
         if (normalizedFormat === 'pdf') {
           const res = await MediaStoreSaver.savePdfToDownloads({
             base64: cleanBase64,
-            fileName: defaultName,
+            fileName: timeStampedName,
           });
           if (res && res.success) {
-            // Also optionally trigger system share sheet so user can send immediately
             if (sharePrompt && res.uri) {
               try {
                 await Share.share({
-                  title: defaultName,
+                  title: timeStampedName,
                   text: 'PDF exported from Passport Photo Studio Pro',
                   url: res.uri,
-                  dialogTitle: `Share or Open ${defaultName}`,
+                  dialogTitle: `Share or Open ${timeStampedName}`,
                 });
               } catch (shareErr) {
                 // Ignore share cancellation
@@ -71,7 +97,7 @@ export async function saveOrDownloadFile({
             }
             return {
               success: true,
-              filePath: res.filePath || `Downloads / ${defaultName}`,
+              filePath: res.filePath || `Downloads / ${timeStampedName}`,
               verifiedBytes: res.bytes,
             };
           }
@@ -79,17 +105,17 @@ export async function saveOrDownloadFile({
           // Image: Save directly to Android Gallery (Pictures/PassportPhotoStudio)
           const res = await MediaStoreSaver.saveImageToGallery({
             base64: cleanBase64,
-            fileName: defaultName,
+            fileName: timeStampedName,
             format: normalizedFormat,
           });
           if (res && res.success) {
             if (sharePrompt && res.uri) {
               try {
                 await Share.share({
-                  title: defaultName,
+                  title: timeStampedName,
                   text: 'Photo saved to Gallery from Passport Photo Studio Pro',
                   url: res.uri,
-                  dialogTitle: `Share ${defaultName}`,
+                  dialogTitle: `Share ${timeStampedName}`,
                 });
               } catch (shareErr) {
                 // Ignore share cancellation
@@ -97,7 +123,7 @@ export async function saveOrDownloadFile({
             }
             return {
               success: true,
-              filePath: res.filePath || `Gallery / Pictures/PassportPhotoStudio / ${defaultName}`,
+              filePath: res.filePath || `Gallery / Pictures/PassportPhotoStudio / ${timeStampedName}`,
               verifiedBytes: res.bytes,
             };
           }
@@ -108,29 +134,28 @@ export async function saveOrDownloadFile({
 
       // B. Fallback: Use @capacitor/filesystem to write to Documents / Downloads
       try {
-        const targetDir = normalizedFormat === 'pdf' ? Directory.Documents : Directory.Documents;
+        const targetDir = Directory.Documents;
         const writeRes = await Filesystem.writeFile({
-          path: `PassportPhotoStudio/${defaultName}`,
+          path: `PassportPhotoStudio/${timeStampedName}`,
           data: cleanBase64,
           directory: targetDir,
           recursive: true,
         });
 
         if (writeRes && writeRes.uri) {
-          // Open share dialog so user can save to Gallery or WhatsApp directly
           try {
             await Share.share({
-              title: defaultName,
-              text: `Saved to phone storage: ${defaultName}`,
+              title: timeStampedName,
+              text: `Saved to phone storage: ${timeStampedName}`,
               url: writeRes.uri,
-              dialogTitle: `Save or Share ${defaultName}`,
+              dialogTitle: `Save or Share ${timeStampedName}`,
             });
           } catch (e) {
             // Ignore
           }
           return {
             success: true,
-            filePath: `Documents / PassportPhotoStudio / ${defaultName}`,
+            filePath: `Documents / PassportPhotoStudio / ${timeStampedName}`,
           };
         }
       } catch (fsErr: any) {
@@ -149,7 +174,7 @@ export async function saveOrDownloadFile({
     anchor.style.top = '-9999px';
     anchor.style.opacity = '0';
     anchor.href = blobUrl;
-    anchor.download = defaultName;
+    anchor.download = timeStampedName;
 
     document.body.appendChild(anchor);
     anchor.click();
@@ -159,9 +184,9 @@ export async function saveOrDownloadFile({
         document.body.removeChild(anchor);
       }
       URL.revokeObjectURL(blobUrl);
-    }, 500);
+    }, 1500);
 
-    return { success: true, verifiedBytes: blob.size, filePath: defaultName };
+    return { success: true, verifiedBytes: blob.size, filePath: timeStampedName };
   } catch (err: any) {
     console.error('File save/download error:', err);
     return { success: false, error: err.message || 'Failed to save file' };

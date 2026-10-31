@@ -14,6 +14,7 @@ import {
 import { PhotoPreset, Adjustments, BackgroundSettings, CropBox } from '../../types';
 import { applyAdjustments, applyStudioBackground, detectFaceAndAutoCrop } from '../../services/imageProcessing';
 import { saveOrDownloadFile } from '../../services/exportHelper';
+import { setJpegDpiMetadata, setPngDpiMetadata } from '../../services/imageResizerEngine';
 
 export interface PhotoEditorProps {
   imageSrc: string;
@@ -524,13 +525,17 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({
     pinchStartDistRef.current = null;
   };
 
+  // Export DPI state: 300 (Standard) or 600 (Ultra Pro)
+  const [exportDpi, setExportDpi] = useState<300 | 600>(300);
+
   // Create full-resolution cropped canvas for single export & sheet layout
-  const createFullQualityCroppedCanvas = (): HTMLCanvasElement | null => {
+  const createFullQualityCroppedCanvas = (dpiOverride?: 300 | 600): HTMLCanvasElement | null => {
     if (!imageObj) return null;
 
-    // Physical dimensions at 300 DPI
-    const outW = Math.round((preset.widthMm / 25.4) * 300);
-    const outH = Math.round((preset.heightMm / 25.4) * 300);
+    const dpiToUse = dpiOverride || exportDpi;
+    // Physical dimensions at calibrated DPI
+    const outW = Math.round((preset.widthMm / 25.4) * dpiToUse);
+    const outH = Math.round((preset.heightMm / 25.4) * dpiToUse);
 
     const croppedCanvas = document.createElement('canvas');
     croppedCanvas.width = outW;
@@ -569,7 +574,7 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({
 
   // Generate cropped output canvas for SheetMaker
   const handleExportCropped = () => {
-    const croppedCanvas = createFullQualityCroppedCanvas();
+    const croppedCanvas = createFullQualityCroppedCanvas(exportDpi);
     if (croppedCanvas) {
       onApplyCrop(croppedCanvas);
     }
@@ -577,15 +582,27 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({
 
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
 
-  // Directly save single cropped passport photo at 300 DPI to Gallery
+  // Directly save single cropped passport photo at calibrated 300 or 600 DPI
   const handleSaveSinglePhoto = async (format: 'jpg' | 'png') => {
-    const croppedCanvas = createFullQualityCroppedCanvas();
+    const croppedCanvas = createFullQualityCroppedCanvas(exportDpi);
     if (!croppedCanvas || !imageObj) return;
 
     const mimeType = format === 'png' ? 'image/png' : 'image/jpeg';
-    const dataUrl = croppedCanvas.toDataURL(mimeType, 0.96);
+    let dataUrl = croppedCanvas.toDataURL(mimeType, 0.96);
+
+    // Inject accurate JFIF / PNG pHYs DPI metadata
+    try {
+      if (format === 'jpg') {
+        dataUrl = setJpegDpiMetadata(dataUrl, exportDpi);
+      } else if (format === 'png') {
+        dataUrl = setPngDpiMetadata(dataUrl, exportDpi);
+      }
+    } catch (dpiErr) {
+      console.warn('DPI metadata injection note:', dpiErr);
+    }
+
     const cleanPreset = preset.name.replace(/[^a-zA-Z0-9]/g, '_');
-    const defaultName = `Passport_Photo_${cleanPreset}_300DPI.${format}`;
+    const defaultName = `Passport_Photo_${cleanPreset}_${exportDpi}DPI.${format}`;
 
     const res = await saveOrDownloadFile({
       dataUrl,
@@ -594,7 +611,7 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({
     });
 
     if (res.success) {
-      setSaveStatus(res.filePath ? `Saved: ${res.filePath}` : `Saved (${format.toUpperCase()}) to Gallery!`);
+      setSaveStatus(res.filePath ? `Saved: ${res.filePath}` : `Saved (${format.toUpperCase()} ${exportDpi} DPI) to Gallery!`);
       setTimeout(() => setSaveStatus(null), 3500);
     } else if (!res.canceled) {
       setSaveStatus(`Error saving photo: ${res.error || 'Unknown error'}`);
@@ -712,10 +729,36 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({
           </div>
 
           <div className="flex items-center space-x-2">
+            {/* DPI Resolution Selector: 300 vs 600 DPI */}
+            <div className="flex items-center bg-slate-950/80 p-0.5 rounded-lg border border-slate-700/60 text-[11px] font-bold">
+              <button
+                onClick={() => setExportDpi(300)}
+                className={`px-2 py-0.5 rounded transition ${
+                  exportDpi === 300
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+                title="Standard 300 DPI Export"
+              >
+                300 DPI
+              </button>
+              <button
+                onClick={() => setExportDpi(600)}
+                className={`px-2 py-0.5 rounded transition ${
+                  exportDpi === 600
+                    ? 'bg-indigo-600 text-white shadow-sm'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+                title="Ultra Pro 600 DPI Master Print"
+              >
+                600 DPI
+              </button>
+            </div>
+
             <button
               onClick={() => handleSaveSinglePhoto('jpg')}
               className="flex items-center space-x-1 px-3 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white rounded-lg text-xs font-medium border border-slate-700 active:scale-95 transition"
-              title="Save Single JPG"
+              title={`Save Single JPG (${exportDpi} DPI)`}
             >
               <FileDown className="w-3.5 h-3.5 text-blue-400" />
               <span>JPG</span>
@@ -723,7 +766,7 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({
             <button
               onClick={() => handleSaveSinglePhoto('png')}
               className="flex items-center space-x-1 px-3 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white rounded-lg text-xs font-medium border border-slate-700 active:scale-95 transition"
-              title="Save Single PNG"
+              title={`Save Single PNG (${exportDpi} DPI)`}
             >
               <FileDown className="w-3.5 h-3.5 text-cyan-400" />
               <span>PNG</span>
@@ -909,14 +952,36 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({
 
       {/* Mobile Floating Bottom Action Dock (Hidden when previewOnly) */}
       {!previewOnly && (
-        <div className="flex md:hidden absolute bottom-2 left-2 right-2 z-20 items-center justify-between gap-2 p-1.5 bg-slate-900/90 backdrop-blur-md rounded-2xl border border-slate-700/70 shadow-2xl">
+        <div className="flex md:hidden absolute bottom-2 left-2 right-2 z-20 items-center justify-between gap-1.5 p-1.5 bg-slate-900/95 backdrop-blur-md rounded-2xl border border-slate-700/70 shadow-2xl">
+          {/* Mobile DPI Selector */}
+          <div className="flex items-center bg-slate-950 p-0.5 rounded-xl border border-slate-800 text-[10px] font-bold shrink-0">
+            <button
+              onClick={() => setExportDpi(300)}
+              className={`px-1.5 py-1.5 rounded-lg transition ${
+                exportDpi === 300 ? 'bg-blue-600 text-white' : 'text-slate-400'
+              }`}
+              title="300 DPI"
+            >
+              300
+            </button>
+            <button
+              onClick={() => setExportDpi(600)}
+              className={`px-1.5 py-1.5 rounded-lg transition ${
+                exportDpi === 600 ? 'bg-indigo-600 text-white' : 'text-slate-400'
+              }`}
+              title="600 DPI"
+            >
+              600
+            </button>
+          </div>
+
           <button
             onClick={() => handleSaveSinglePhoto('jpg')}
             className="flex-1 flex items-center justify-center space-x-1 py-2.5 bg-slate-800 hover:bg-slate-700 active:bg-blue-600 text-white rounded-xl text-xs font-bold border border-slate-700/80 active:scale-95 transition shadow-sm"
             title="Save Single JPG to Gallery"
           >
             <FileDown className="w-3.5 h-3.5 text-blue-400" />
-            <span>Save JPG</span>
+            <span>JPG</span>
           </button>
 
           <button
@@ -925,7 +990,7 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({
             title="Save Single PNG to Gallery"
           >
             <FileDown className="w-3.5 h-3.5 text-cyan-400" />
-            <span>Save PNG</span>
+            <span>PNG</span>
           </button>
 
           <button
@@ -934,7 +999,7 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({
             title="Open Sheet Maker"
           >
             <Grid className="w-3.5 h-3.5" />
-            <span>Sheet Maker</span>
+            <span>Sheet</span>
           </button>
         </div>
       )}

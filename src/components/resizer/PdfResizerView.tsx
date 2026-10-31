@@ -122,6 +122,9 @@ export const PdfResizerView: React.FC<PdfResizerViewProps> = ({ onNotify }) => {
         targetKb: compressModeType === 'target-kb' ? targetKb : undefined,
         qualitySlider,
         dpi,
+        onProgress: (p) => {
+          setStatusMessage(p.message);
+        },
       });
 
       setOutputBytes(res.pdfBytes);

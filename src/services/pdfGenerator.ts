@@ -33,7 +33,9 @@ export async function generatePassportSheetPDF(
     doc.addImage(imgData, 'JPEG', 0, 0, sheetWidthMm, sheetHeightMm, undefined, 'FAST');
   }
 
-  return doc.output('datauristring');
+  const rawUri = doc.output('datauristring');
+  const base64 = rawUri.includes(',') ? rawUri.split(',')[1] : rawUri;
+  return `data:application/pdf;base64,${base64}`;
 }
 
 /**
@@ -67,7 +69,9 @@ export async function generateDocumentA4PDF(
     doc.addImage(imgData, 'JPEG', 0, 0, a4WidthMm, a4HeightMm, undefined, 'FAST');
   }
 
-  return doc.output('datauristring');
+  const rawUri = doc.output('datauristring');
+  const base64 = rawUri.includes(',') ? rawUri.split(',')[1] : rawUri;
+  return `data:application/pdf;base64,${base64}`;
 }
 
 /**
@@ -99,12 +103,15 @@ export async function renderA4DocumentPageToCanvas(
   const gapPx = mmToPx(settings.gapMm);
   const topMarginPx = mmToPx(settings.topMarginMm);
 
-  // Helper to load image
-  const loadImage = (src: string): Promise<HTMLImageElement> => {
-    return new Promise((resolve, reject) => {
+  // Helper to load image safely without throwing and crashing PDF generation
+  const loadImage = (src: string): Promise<HTMLImageElement | null> => {
+    return new Promise((resolve) => {
       const img = new Image();
       img.onload = () => resolve(img);
-      img.onerror = reject;
+      img.onerror = () => {
+        console.warn('Failed to load image for A4 PDF:', src.substring(0, 50));
+        resolve(null);
+      };
       img.src = src;
     });
   };
@@ -115,8 +122,20 @@ export async function renderA4DocumentPageToCanvas(
   let frontImg: HTMLImageElement | null = null;
   let backImg: HTMLImageElement | null = null;
 
-  if (frontSrc) frontImg = await loadImage(frontSrc);
-  if (backSrc) backImg = await loadImage(backSrc);
+  if (frontSrc) {
+    try {
+      frontImg = await loadImage(frontSrc);
+    } catch {
+      frontImg = null;
+    }
+  }
+  if (backSrc) {
+    try {
+      backImg = await loadImage(backSrc);
+    } catch {
+      backImg = null;
+    }
+  }
 
   const drawCard = (
     img: HTMLImageElement | null,

@@ -26,6 +26,7 @@ import { BeforeAfterPreview } from './BeforeAfterPreview';
 import { ManualCropModal } from './ManualCropModal';
 import { OutputInfoPanel, ProcessingStatus } from './OutputInfoPanel';
 import { saveOrDownloadFile } from '../../services/exportHelper';
+import { ExamPreset } from '../../types';
 
 interface PhotoCompressorViewProps {
   initialImage?: {
@@ -35,10 +36,11 @@ interface PhotoCompressorViewProps {
     height: number;
     sizeBytes: number;
   } | null;
+  appliedPreset?: ExamPreset | null;
   onNotify?: (msg: string) => void;
 }
 
-export const PhotoCompressorView: React.FC<PhotoCompressorViewProps> = ({ initialImage, onNotify }) => {
+export const PhotoCompressorView: React.FC<PhotoCompressorViewProps> = ({ initialImage, appliedPreset, onNotify }) => {
   // Raw uncropped image
   const [rawOriginalDataUrl, setRawOriginalDataUrl] = useState<string | null>(initialImage?.dataUrl || null);
   const [rawW, setRawW] = useState<number>(initialImage?.width || 0);
@@ -86,6 +88,16 @@ export const PhotoCompressorView: React.FC<PhotoCompressorViewProps> = ({ initia
   const fileInputRef = useRef<HTMLInputElement>(null);
   const workingImageRef = useRef<HTMLImageElement | null>(null);
   const renderJobIdRef = useRef<number>(0);
+
+  useEffect(() => {
+    if (appliedPreset) {
+      const kb = appliedPreset.preferredKB || appliedPreset.maxKB || 50;
+      setTargetKb(kb);
+      setCustomKb(String(kb));
+      setCompressMode('target-kb');
+      onNotify?.(`Preset active: ${appliedPreset.name} (Target: ${kb} KB)`);
+    }
+  }, [appliedPreset, onNotify]);
 
   useEffect(() => {
     if (initialImage) {

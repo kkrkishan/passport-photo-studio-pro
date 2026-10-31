@@ -33,6 +33,8 @@ import { BeforeAfterPreview } from './BeforeAfterPreview';
 import { ManualCropModal } from './ManualCropModal';
 import { OutputInfoPanel, ProcessingStatus } from './OutputInfoPanel';
 import { saveOrDownloadFile } from '../../services/exportHelper';
+import { ExamPreset } from '../../types';
+import { getAllPresets } from '../../services/presetStorageService';
 
 interface PhotoResizerViewProps {
   initialImage?: {
@@ -42,10 +44,14 @@ interface PhotoResizerViewProps {
     height: number;
     sizeBytes: number;
   } | null;
+  appliedPreset?: ExamPreset | null;
   onNotify?: (msg: string) => void;
 }
 
-export const PhotoResizerView: React.FC<PhotoResizerViewProps> = ({ initialImage, onNotify }) => {
+export const PhotoResizerView: React.FC<PhotoResizerViewProps> = ({ initialImage, appliedPreset, onNotify }) => {
+  // Preset state & presets list
+  const [activePreset, setActivePreset] = useState<ExamPreset | null>(appliedPreset || null);
+  const [availablePresets] = useState<ExamPreset[]>(() => getAllPresets());
   // Raw uploaded image state (preserved for restore)
   const [rawOriginalDataUrl, setRawOriginalDataUrl] = useState<string | null>(initialImage?.dataUrl || null);
   const [rawW, setRawW] = useState<number>(initialImage?.width || 0);
@@ -71,7 +77,7 @@ export const PhotoResizerView: React.FC<PhotoResizerViewProps> = ({ initialImage
   const [fitMode, setFitMode] = useState<'crop-to-fit' | 'fit-padding' | 'stretch'>('crop-to-fit');
   const [bgColor, setBgColor] = useState<string>('#ffffff');
   const [dpi, setDpi] = useState<number>(300);
-  const [dpiMode, setDpiMode] = useState<DpiMode>('metadata');
+  const [dpiMode, setDpiMode] = useState<DpiMode>('resample');
   const [format, setFormat] = useState<ImageFormat>('jpg');
 
   // Feature 2: 0–100% Quality / Compression Slider (Default 80%)
@@ -91,6 +97,32 @@ export const PhotoResizerView: React.FC<PhotoResizerViewProps> = ({ initialImage
   const fileInputRef = useRef<HTMLInputElement>(null);
   const workingImageRef = useRef<HTMLImageElement | null>(null);
   const renderJobIdRef = useRef<number>(0);
+
+  // Apply a selected exam preset's default settings
+  const applyPreset = useCallback(
+    (preset: ExamPreset) => {
+      setActivePreset(preset);
+      setUnit(preset.unit);
+      setWidth(preset.width);
+      setHeight(preset.height);
+      setDpi(preset.dpi || 300);
+      setDpiMode('resample');
+      setLockAspect(false);
+      setFitMode('crop-to-fit');
+      if (preset.allowedFormats && preset.allowedFormats.length > 0) {
+        setFormat(preset.allowedFormats[0]);
+      }
+      onNotify?.(`Applied Preset: ${preset.name} (${preset.width} × ${preset.height} ${preset.unit})`);
+    },
+    [onNotify]
+  );
+
+  // Load preset when appliedPreset prop changes
+  useEffect(() => {
+    if (appliedPreset) {
+      applyPreset(appliedPreset);
+    }
+  }, [appliedPreset, applyPreset]);
 
   // Load image when initialImage changes
   useEffect(() => {
@@ -117,10 +149,23 @@ export const PhotoResizerView: React.FC<PhotoResizerViewProps> = ({ initialImage
       setCurBytes(bytes);
       setIsCropped(false);
 
-      // Default dimensions match natural pixels
-      setWidth(img.width);
-      setHeight(img.height);
-      setUnit('px');
+      // If preset is active, use its exact specifications, otherwise default to natural pixels
+      if (activePreset) {
+        setUnit(activePreset.unit);
+        setWidth(activePreset.width);
+        setHeight(activePreset.height);
+        setDpi(activePreset.dpi || 300);
+        setDpiMode('resample');
+        setLockAspect(false);
+        if (activePreset.allowedFormats && activePreset.allowedFormats.length > 0) {
+          setFormat(activePreset.allowedFormats[0]);
+        }
+      } else {
+        setWidth(img.width);
+        setHeight(img.height);
+        setUnit('px');
+      }
+
       setVerifiedSavedBytes(undefined);
       setStatus('ready');
     };
@@ -411,6 +456,52 @@ export const PhotoResizerView: React.FC<PhotoResizerViewProps> = ({ initialImage
               <span>Save Resized Photo</span>
             </button>
           </div>
+        )}
+      </div>
+
+      {/* Exam Preset Selection & Reset Bar */}
+      <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-3 flex flex-wrap items-center justify-between gap-3 shadow-lg">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center space-x-1.5 text-xs">
+            <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Exam Preset:</span>
+            <select
+              value={activePreset ? activePreset.id : ''}
+              onChange={(e) => {
+                const found = availablePresets.find((p) => p.id === e.target.value);
+                if (found) {
+                  applyPreset(found);
+                } else {
+                  setActivePreset(null);
+                }
+              }}
+              className="bg-slate-800 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-blue-500 font-medium"
+            >
+              <option value="">-- Choose Exam or Custom Preset --</option>
+              {availablePresets.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name} ({p.width}×{p.height} {p.unit}, {p.minKB}-{p.maxKB}KB)
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {activePreset && (
+            <div className="flex items-center space-x-1 text-xs px-2.5 py-1 rounded-lg bg-blue-950/70 border border-blue-500/30 text-blue-300">
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
+              <span className="font-semibold">{activePreset.name} Active</span>
+            </div>
+          )}
+        </div>
+
+        {activePreset && (
+          <button
+            onClick={() => applyPreset(activePreset)}
+            className="flex items-center space-x-1.5 px-3 py-1 rounded-xl bg-amber-600/20 hover:bg-amber-600 border border-amber-500/30 text-amber-300 hover:text-white text-xs font-bold transition active:scale-95"
+            title="Reset settings to official exam preset specifications"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            <span>Reset to Preset Defaults</span>
+          </button>
         )}
       </div>
 
