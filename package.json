@@ -1,7 +1,7 @@
 {
   "name": "passport-photo-studio-pro",
   "productName": "Passport Photo Studio Pro",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Professional Passport Photo Editor, Document Scanner and Print Sheet Maker for Windows",
   "author": "Antigravity Software",
   "main": "dist-electron/main.js",
